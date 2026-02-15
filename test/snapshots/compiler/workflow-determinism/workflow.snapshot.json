@@ -1,0 +1,133 @@
+{
+  "connections": {
+    "httpRequest_6": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_5",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "if_2": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "noOp_3",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "set_4",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "manualTrigger_1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "if_2",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "noOp_3": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_5",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "set_4": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_5",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "splitInBatches_5": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "set_7",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "httpRequest_6",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "name": "workflow-determinism",
+  "nodes": [
+    {
+      "key": "manualTrigger_1",
+      "n8nType": "n8n-nodes-base.manualTrigger",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "if_2",
+      "n8nType": "n8n-nodes-base.if",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "noOp_3",
+      "n8nType": "n8n-nodes-base.noOp",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "set_4",
+      "n8nType": "n8n-nodes-base.set",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "splitInBatches_5",
+      "n8nType": "n8n-nodes-base.splitInBatches",
+      "parameters": {},
+      "typeVersion": 3
+    },
+    {
+      "key": "httpRequest_6",
+      "n8nType": "n8n-nodes-base.httpRequest",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "set_7",
+      "n8nType": "n8n-nodes-base.set",
+      "parameters": {},
+      "typeVersion": 1
+    }
+  ],
+  "settings": {
+    "saveExecutionProgress": true,
+    "timezone": "Asia/Tokyo"
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "connections": {
+    "if_2": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "set_3",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "noOp_8",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "if_5": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "noOp_6",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "set_7",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "manualTrigger_1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "if_2",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "noOp_6": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_4",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "noOp_8": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "set_9",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "set_3": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_4",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "set_7": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "splitInBatches_4",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "splitInBatches_4": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "set_9",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "if_5",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "name": "if-for-mixed",
+  "nodes": [
+    {
+      "key": "manualTrigger_1",
+      "n8nType": "n8n-nodes-base.manualTrigger",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "if_2",
+      "n8nType": "n8n-nodes-base.if",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "set_3",
+      "n8nType": "n8n-nodes-base.set",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "splitInBatches_4",
+      "n8nType": "n8n-nodes-base.splitInBatches",
+      "parameters": {},
+      "typeVersion": 3
+    },
+    {
+      "key": "if_5",
+      "n8nType": "n8n-nodes-base.if",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "noOp_6",
+      "n8nType": "n8n-nodes-base.noOp",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "set_7",
+      "n8nType": "n8n-nodes-base.set",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "noOp_8",
+      "n8nType": "n8n-nodes-base.noOp",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "key": "set_9",
+      "n8nType": "n8n-nodes-base.set",
+      "parameters": {},
+      "typeVersion": 1
+    }
+  ],
+  "settings": {}
+}

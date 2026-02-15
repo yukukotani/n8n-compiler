@@ -1,0 +1,42 @@
+[
+  {
+    "code": "E_UNSUPPORTED_STATEMENT",
+    "end": 105,
+    "file": "unsupported-syntax.workflow.ts",
+    "message": "Unsupported statement type: ReturnStatement",
+    "severity": "error",
+    "start": 98
+  },
+  {
+    "code": "E_UNSUPPORTED_IF_TEST",
+    "end": 117,
+    "file": "unsupported-syntax.workflow.ts",
+    "message": "If test must be n.expr(...) or boolean literal",
+    "severity": "error",
+    "start": 115
+  },
+  {
+    "code": "E_UNSUPPORTED_FOR_FORM",
+    "end": 210,
+    "file": "unsupported-syntax.workflow.ts",
+    "message": "for...of must use const binding in MVP",
+    "severity": "error",
+    "start": 148
+  },
+  {
+    "code": "E_INVALID_LOOP_SOURCE",
+    "end": 240,
+    "file": "unsupported-syntax.workflow.ts",
+    "message": "for...of source must be n.loop(...) call",
+    "severity": "error",
+    "start": 235
+  },
+  {
+    "code": "E_UNKNOWN_NODE_CALL",
+    "end": 288,
+    "file": "unsupported-syntax.workflow.ts",
+    "message": "Unknown DSL node call: n.unknownNode(...)",
+    "severity": "error",
+    "start": 271
+  }
+]
