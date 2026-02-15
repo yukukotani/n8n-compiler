@@ -10,6 +10,7 @@ import { extractEntry } from "./extract-entry";
 import type { NodeIR } from "./ir";
 import { lowerControlFlowGraphToIR } from "./lowering";
 import { parseSync } from "./parse";
+import { transformParameters } from "./transform-params";
 import { validateWorkflow } from "./validate";
 
 export type N8nNode = {
@@ -177,7 +178,7 @@ function toN8nNode(node: NodeIR, index: number): N8nNode {
     type: node.n8nType,
     typeVersion: node.typeVersion,
     position: node.position ?? [DEFAULT_POSITION_X_SPACING * index, 0],
-    parameters: node.parameters as JsonObject,
+    parameters: transformParameters(node.n8nType, node.typeVersion, node.parameters as JsonObject),
   };
 
   if (node.credentials) {
