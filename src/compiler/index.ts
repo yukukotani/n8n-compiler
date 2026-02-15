@@ -1,4 +1,5 @@
 export * from "./diagnostics";
+export * from "./connections";
 export * from "./cfg";
 export * from "./extract-entry";
 export * from "./ir";
