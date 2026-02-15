@@ -1,4 +1,10 @@
-import type { CfgBlock, CfgDslNodeCall, CfgIfStatement, CfgStatement } from "./cfg";
+import type {
+  CfgBlock,
+  CfgDslNodeCall,
+  CfgForOfStatement,
+  CfgIfStatement,
+  CfgStatement,
+} from "./cfg";
 import {
   createEdgeIR,
   createNodeIR,
@@ -29,6 +35,7 @@ const NODE_TYPE_BY_KIND = {
   set: "n8n-nodes-base.set",
   noOp: "n8n-nodes-base.noOp",
   if: "n8n-nodes-base.if",
+  splitInBatches: "n8n-nodes-base.splitInBatches",
 } as const;
 
 export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput): WorkflowIR {
@@ -63,6 +70,7 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
       lowerIfStatement(statement, context);
       return;
     case "ForOf":
+      lowerForOfStatement(statement, context);
       return;
     default:
       return assertNever(statement);
@@ -89,6 +97,18 @@ function lowerIfStatement(statement: CfgIfStatement, context: LoweringContext): 
   );
 
   context.frontier = mergeFrontiers(consequentFrontier, alternateFrontier);
+}
+
+function lowerForOfStatement(statement: CfgForOfStatement, context: LoweringContext): void {
+  const loopNodeKey = appendLoopNode(context);
+  const bodyTerminalFrontier = lowerBranchWithFrontier(
+    statement.body,
+    [{ nodeKey: loopNodeKey, outputIndex: 1 }],
+    context,
+  );
+
+  context.workflow.edges.push(...buildLoopBackEdges(bodyTerminalFrontier, loopNodeKey));
+  context.frontier = [{ nodeKey: loopNodeKey, outputIndex: 0 }];
 }
 
 function appendNode(
@@ -124,6 +144,21 @@ function appendIfNode(context: LoweringContext): string {
   return node.key;
 }
 
+function appendLoopNode(context: LoweringContext): string {
+  context.counter += 1;
+  const node = createNodeIR({
+    kind: "splitInBatches",
+    n8nType: NODE_TYPE_BY_KIND.splitInBatches,
+    typeVersion: 3,
+    counter: context.counter,
+    parameters: {},
+  });
+
+  context.workflow.nodes.push(node);
+  context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
+  return node.key;
+}
+
 function lowerBranchWithFrontier(
   statements: CfgStatement[],
   branchFrontier: FrontierPort[],
@@ -150,6 +185,23 @@ function buildConnectionsFromFrontier(frontier: FrontierPort[], toNodeKey: strin
         from: port.nodeKey,
         fromOutputIndex: port.outputIndex,
         to: toNodeKey,
+      }),
+    );
+  }
+
+  return edges;
+}
+
+function buildLoopBackEdges(frontier: FrontierPort[], loopNodeKey: string): EdgeIR[] {
+  const edges: EdgeIR[] = [];
+
+  for (const port of frontier) {
+    edges.push(
+      createEdgeIR({
+        from: port.nodeKey,
+        fromOutputIndex: port.outputIndex,
+        to: loopNodeKey,
+        kind: "loop-back",
       }),
     );
   }

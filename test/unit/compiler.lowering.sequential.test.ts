@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { buildControlFlowGraph } from "../../src/compiler/cfg";
 import { extractEntry } from "../../src/compiler/extract-entry";
+import type { EdgeIR, WorkflowIR } from "../../src/compiler/ir";
 import { lowerControlFlowGraphToIR } from "../../src/compiler/lowering";
 import { parseSync } from "../../src/compiler/parse";
 
-function lowerFromSource(sourceText: string) {
+function lowerFromSource(sourceText: string): WorkflowIR {
   const parseResult = parseSync("workflow.ts", sourceText);
   expect(parseResult.diagnostics).toEqual([]);
   expect(parseResult.program).not.toBeNull();
@@ -32,6 +33,25 @@ function lowerFromSource(sourceText: string) {
   return lowerControlFlowGraphToIR({
     name: "sample",
     cfg: cfgResult.cfg,
+  });
+}
+
+function expectEdge(workflow: WorkflowIR, edge: EdgeIR): void {
+  expect(workflow.edges).toContainEqual(edge);
+}
+
+function expectLoopBackEdge(
+  workflow: WorkflowIR,
+  fromNodeKey: string,
+  loopNodeKey: string,
+  fromOutputIndex = 0,
+): void {
+  expectEdge(workflow, {
+    from: fromNodeKey,
+    fromOutputIndex,
+    to: loopNodeKey,
+    toInputIndex: 0,
+    kind: "loop-back",
   });
 }
 
@@ -109,7 +129,7 @@ test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () =>
   ]);
 });
 
-test("lowerControlFlowGraphToIR は if を反映しつつ for を無視して逐次接続を維持する", () => {
+test("lowerControlFlowGraphToIR は if と for..of n.loop() を組み合わせて逐次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
@@ -136,46 +156,62 @@ test("lowerControlFlowGraphToIR は if を反映しつつ for を無視して逐
     "if_2",
     "noOp_3",
     "noOp_4",
-    "set_5",
+    "splitInBatches_5",
+    "noOp_6",
+    "set_7",
   ]);
 
-  expect(workflow.edges).toEqual([
-    {
-      from: "manualTrigger_1",
-      fromOutputIndex: 0,
-      to: "if_2",
-      toInputIndex: 0,
-      kind: undefined,
-    },
-    {
-      from: "if_2",
-      fromOutputIndex: 0,
-      to: "noOp_3",
-      toInputIndex: 0,
-      kind: undefined,
-    },
-    {
-      from: "if_2",
-      fromOutputIndex: 1,
-      to: "noOp_4",
-      toInputIndex: 0,
-      kind: undefined,
-    },
-    {
-      from: "noOp_3",
-      fromOutputIndex: 0,
-      to: "set_5",
-      toInputIndex: 0,
-      kind: undefined,
-    },
-    {
-      from: "noOp_4",
-      fromOutputIndex: 0,
-      to: "set_5",
-      toInputIndex: 0,
-      kind: undefined,
-    },
-  ]);
+  expect(workflow.edges).toHaveLength(8);
+  expectEdge(workflow, {
+    from: "manualTrigger_1",
+    fromOutputIndex: 0,
+    to: "if_2",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "if_2",
+    fromOutputIndex: 0,
+    to: "noOp_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "if_2",
+    fromOutputIndex: 1,
+    to: "noOp_4",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "noOp_3",
+    fromOutputIndex: 0,
+    to: "splitInBatches_5",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "noOp_4",
+    fromOutputIndex: 0,
+    to: "splitInBatches_5",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "splitInBatches_5",
+    fromOutputIndex: 1,
+    to: "noOp_6",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectLoopBackEdge(workflow, "noOp_6", "splitInBatches_5");
+  expectEdge(workflow, {
+    from: "splitInBatches_5",
+    fromOutputIndex: 0,
+    to: "set_7",
+    toInputIndex: 0,
+    kind: undefined,
+  });
 });
 
 test("lowerControlFlowGraphToIR は if をノード化して true/false 出力(0/1)を使って接続する", () => {
@@ -350,4 +386,52 @@ test("lowerControlFlowGraphToIR は if(true)/if(false) を枝刈りして不要�
       kind: undefined,
     },
   ]);
+});
+
+test("lowerControlFlowGraphToIR は for..of n.loop() を splitInBatches と back-edge に lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+
+        for (const item of n.loop({ batchSize: 1 })) {
+          n.noOp();
+        }
+
+        n.set({ value: "done" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "splitInBatches_2",
+    "noOp_3",
+    "set_4",
+  ]);
+
+  expect(workflow.edges).toHaveLength(4);
+  expectEdge(workflow, {
+    from: "manualTrigger_1",
+    fromOutputIndex: 0,
+    to: "splitInBatches_2",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "splitInBatches_2",
+    fromOutputIndex: 1,
+    to: "noOp_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectLoopBackEdge(workflow, "noOp_3", "splitInBatches_2");
+  expectEdge(workflow, {
+    from: "splitInBatches_2",
+    fromOutputIndex: 0,
+    to: "set_4",
+    toInputIndex: 0,
+    kind: undefined,
+  });
 });
