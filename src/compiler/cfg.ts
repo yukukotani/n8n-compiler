@@ -70,12 +70,25 @@ export type CfgDslNodeCall = {
 export type CfgIfTest =
   | {
       type: "ExprCall";
-      expression: Expression;
+      expression: string;
     }
   | {
       type: "BooleanLiteral";
       value: boolean;
     };
+
+const SUPPORTED_IF_BINARY_OPERATORS = new Set<string>([
+  "==",
+  "===",
+  "!=",
+  "!==",
+  ">",
+  ">=",
+  "<",
+  "<=",
+]);
+
+const SUPPORTED_IF_LOGICAL_OPERATORS = new Set<string>(["&&", "||"]);
 
 export type BuildControlFlowGraphResult = {
   cfg: CfgBlock | null;
@@ -293,13 +306,28 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
 
   const call = readDslCall(test);
   if (call?.name === "expr") {
-    const expression = pickExpressionArgument(call.arguments[0]);
-    if (expression) {
+    const expressionArg = pickExpressionArgument(call.arguments[0]);
+    const expression = expressionArg
+      ? buildIfExpressionString(expressionArg, context.nodeVariables, {
+          allowRawStringLiteral: true,
+        })
+      : null;
+    if (expression !== null) {
       return {
         type: "ExprCall",
         expression,
       };
     }
+  }
+
+  const directExpression = buildIfExpressionString(test, context.nodeVariables, {
+    allowRawStringLiteral: false,
+  });
+  if (directExpression !== null) {
+    return {
+      type: "ExprCall",
+      expression: directExpression,
+    };
   }
 
   pushDiagnostic(context, {
@@ -309,6 +337,166 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
     end: test.end,
   });
   return null;
+}
+
+function buildIfExpressionString(
+  expression: Expression,
+  nodeVariables: ReadonlySet<string>,
+  options: { allowRawStringLiteral: boolean },
+): string | null {
+  if (options.allowRawStringLiteral && expression.type === "Literal") {
+    if (typeof expression.value === "string") {
+      return expression.value;
+    }
+  }
+
+  const body = serializeIfExpressionBody(expression, nodeVariables);
+  if (body === null) {
+    return null;
+  }
+
+  return `={{${body}}}`;
+}
+
+function serializeIfExpressionBody(
+  expression: Expression,
+  nodeVariables: ReadonlySet<string>,
+): string | null {
+  if (expression.type === "Identifier" || expression.type === "MemberExpression") {
+    return serializeNodeReferenceExpression(expression, nodeVariables);
+  }
+
+  if (expression.type === "Literal") {
+    return serializeLiteralValue(expression.value);
+  }
+
+  if (expression.type === "ParenthesizedExpression") {
+    const inner = serializeIfExpressionBody(expression.expression, nodeVariables);
+    if (inner === null) {
+      return null;
+    }
+    return `(${inner})`;
+  }
+
+  if (expression.type === "UnaryExpression") {
+    if (expression.operator !== "!") {
+      return null;
+    }
+
+    const argument = serializeIfExpressionBody(expression.argument, nodeVariables);
+    if (argument === null) {
+      return null;
+    }
+
+    return `!(${argument})`;
+  }
+
+  if (expression.type === "BinaryExpression") {
+    if (!SUPPORTED_IF_BINARY_OPERATORS.has(expression.operator)) {
+      return null;
+    }
+
+    if (expression.left.type === "PrivateIdentifier") {
+      return null;
+    }
+
+    const left = serializeIfExpressionBody(expression.left, nodeVariables);
+    const right = serializeIfExpressionBody(expression.right, nodeVariables);
+    if (left === null || right === null) {
+      return null;
+    }
+
+    return `${left} ${expression.operator} ${right}`;
+  }
+
+  if (expression.type === "LogicalExpression") {
+    if (!SUPPORTED_IF_LOGICAL_OPERATORS.has(expression.operator)) {
+      return null;
+    }
+
+    const left = serializeIfExpressionBody(expression.left, nodeVariables);
+    const right = serializeIfExpressionBody(expression.right, nodeVariables);
+    if (left === null || right === null) {
+      return null;
+    }
+
+    return `${left} ${expression.operator} ${right}`;
+  }
+
+  return null;
+}
+
+function serializeLiteralValue(value: unknown): string | null {
+  if (value === null) {
+    return "null";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  return null;
+}
+
+function serializeNodeReferenceExpression(
+  expression: Expression,
+  nodeVariables: ReadonlySet<string>,
+): string | null {
+  if (expression.type === "Identifier") {
+    if (nodeVariables.has(expression.name)) {
+      return `$node[${JSON.stringify(expression.name)}].json`;
+    }
+
+    return null;
+  }
+
+  if (expression.type !== "MemberExpression") {
+    return null;
+  }
+
+  const segments: string[] = [];
+  let current: Expression = expression;
+
+  while (current.type === "MemberExpression") {
+    if (current.computed) {
+      if (current.property.type !== "Literal") {
+        return null;
+      }
+
+      if (typeof current.property.value === "string") {
+        segments.unshift(`[${JSON.stringify(current.property.value)}]`);
+      } else if (typeof current.property.value === "number") {
+        segments.unshift(`[${current.property.value}]`);
+      } else {
+        return null;
+      }
+    } else {
+      if (current.property.type !== "Identifier") {
+        return null;
+      }
+
+      segments.unshift(`.${current.property.name}`);
+    }
+
+    current = current.object;
+  }
+
+  if (current.type !== "Identifier" || !nodeVariables.has(current.name)) {
+    return null;
+  }
+
+  return `$node[${JSON.stringify(current.name)}].json${segments.join("")}`;
 }
 
 function buildForOfStatement(statement: ForOfStatement, context: BuildContext): CfgStatement[] {

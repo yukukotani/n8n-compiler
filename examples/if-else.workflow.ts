@@ -13,7 +13,7 @@ export default workflow({
       url: "https://example.com/api/check",
     });
 
-    if (n.expr("={{$json.ok === true}}")) {
+    if (check.ok) {
       n.set({
         values: {
           message: check.data.message,

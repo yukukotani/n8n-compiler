@@ -47,7 +47,7 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 - ブロック文: `{ ... }`
 - DSL ノード呼び出し: `n.manualTrigger(...)`, `n.httpRequest(...)`, `n.set(...)`, `n.noOp(...)`
 - 変数代入つきノード呼び出し: `const req = n.httpRequest(...)`
-- 条件分岐: `if (n.expr("={{...}}")) { ... } else { ... }`
+- 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
 - ループ: `for (const item of n.loop({...})) { ... }`
 
@@ -56,7 +56,7 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 - `execute` はブロックボディを持つ関数式/アロー関数である必要がある
 - 未知の DSL 呼び出し（例: `n.unknownNode(...)`）は非対応
 - `n.expr(...)` と `n.loop(...)` を単独ノード呼び出しとして使うことは非対応
-- `if` 条件は `n.expr(...)` または boolean リテラルのみ対応
+- `if` 条件は boolean リテラル、`n.expr(...)`、または前ノード参照を使う式（例: `check.ok`, `check.ok == true`, `!check.ok`, `check.count > 0`, `check.ok && check.ready`）に対応
 - `for await...of` は非対応
 - `for...of` は `const` で 1 つの識別子束縛が必須
 - `for...of` の右辺は `n.loop(...)` のみ対応
@@ -72,7 +72,7 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 | `E_ENTRY_NOT_FOUND` | `export default workflow({...})` が見つからない |
 | `E_EXECUTE_NOT_FOUND` | `workflow({...})` 内に `execute` が見つからない |
 | `E_UNSUPPORTED_STATEMENT` | MVP 非対応の文、または許可されない呼び出し形式 |
-| `E_UNSUPPORTED_IF_TEST` | `if` 条件が `n.expr(...)` / boolean 以外 |
+| `E_UNSUPPORTED_IF_TEST` | `if` 条件が対応式（boolean / `n.expr(...)` / 前ノード参照式）以外 |
 | `E_UNSUPPORTED_FOR_FORM` | `for...of` の形が制約違反（`for await...of` 含む） |
 | `E_INVALID_LOOP_SOURCE` | `for...of` の右辺が `n.loop(...)` ではない |
 | `E_UNKNOWN_NODE_CALL` | 未知の `n.<node>(...)` 呼び出し |

@@ -8,7 +8,12 @@ export default workflow({
   execute() {
     n.manualTrigger();
 
-    if (n.expr("={{$json.run === true}}")) {
+    const check = n.httpRequest({
+      method: "GET",
+      url: "https://swapi.dev/api/people/1",
+    });
+
+    if (check.height === 172) {
       n.set({
         values: {
           branch: "run",
@@ -16,7 +21,12 @@ export default workflow({
       });
 
       for (const item of n.loop({ batchSize: 1 })) {
-        if (n.expr("={{$json.inner === true}}")) {
+        const checkItem = n.httpRequest({
+          method: "GET",
+          url: "https://example.com/api/check-item",
+        });
+
+        if (checkItem.inner == true) {
           const result = n.httpRequest({
             method: "POST",
             url: "https://example.com/api/process",

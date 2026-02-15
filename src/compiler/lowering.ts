@@ -148,10 +148,7 @@ function appendIfNode(test: CfgIfTest, context: LoweringContext): string {
 
 function buildIfParameters(test: CfgIfTest): Record<string, unknown> {
   if (test.type === "ExprCall") {
-    const expr = test.expression;
-    if (expr.type === "Literal" && typeof expr.value === "string") {
-      return { expression: expr.value };
-    }
+    return { expression: test.expression };
   }
   return {};
 }

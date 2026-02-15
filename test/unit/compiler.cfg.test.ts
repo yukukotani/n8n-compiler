@@ -15,7 +15,7 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
         n.manualTrigger();
         const request = n.httpRequest({ method: "GET", url: "https://example.com" });
 
-        if (n.expr("={{$json.ok === true}}")) {
+        if (request.ok == true) {
           n.set({ value: "ok" });
         } else {
           n.noOp();
@@ -72,6 +72,77 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
   if (variableStatement?.type === "Variable") {
     expect(variableStatement.name).toBe("request");
     expect(variableStatement.call.kind).toBe("httpRequest");
+  }
+
+  const ifStatement = cfgResult.cfg.body[3];
+  expect(ifStatement?.type).toBe("If");
+  if (ifStatement?.type === "If") {
+    expect(ifStatement.test).toEqual({
+      type: "ExprCall",
+      expression: '={{$node["request"].json.ok == true}}',
+    });
+  }
+});
+
+test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま書ける", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+        const check = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        if (check.ok) {
+          n.noOp();
+        }
+
+        if (check.ok == true) {
+          n.noOp();
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const firstIf = cfgResult.cfg.body[2];
+  const secondIf = cfgResult.cfg.body[3];
+
+  expect(firstIf?.type).toBe("If");
+  if (firstIf?.type === "If") {
+    expect(firstIf.test).toEqual({
+      type: "ExprCall",
+      expression: '={{$node["check"].json.ok}}',
+    });
+  }
+
+  expect(secondIf?.type).toBe("If");
+  if (secondIf?.type === "If") {
+    expect(secondIf.test).toEqual({
+      type: "ExprCall",
+      expression: '={{$node["check"].json.ok == true}}',
+    });
   }
 });
 

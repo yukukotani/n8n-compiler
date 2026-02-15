@@ -337,6 +337,35 @@ test("lowerControlFlowGraphToIR は else なし if の false 側を合流 fronti
   ]);
 });
 
+test("lowerControlFlowGraphToIR は if 条件の node 参照式を if ノード expression に変換する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+        const check = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        if (check.ok == true) {
+          n.noOp();
+        } else {
+          n.set({ value: "fallback" });
+        }
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "check",
+    "if_3",
+    "noOp_4",
+    "set_5",
+  ]);
+
+  const ifNode = workflow.nodes.find((node) => node.key === "if_3");
+  expect(ifNode?.parameters).toEqual({ expression: '={{$node["check"].json.ok == true}}' });
+});
+
 test("lowerControlFlowGraphToIR は if(true)/if(false) を枝刈りして不要な if ノードを作らない", () => {
   const workflow = lowerFromSource(`
     export default workflow({
