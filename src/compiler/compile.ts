@@ -1,4 +1,8 @@
-import type { ArrayExpression, Expression, ObjectExpression } from "oxc-parser";
+import type { Expression } from "oxc-parser";
+import {
+  parseObjectExpression,
+  type JsonObject,
+} from "./ast-json";
 import { buildN8nConnections, type N8nConnections } from "./connections";
 import { buildControlFlowGraph } from "./cfg";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
@@ -8,13 +12,19 @@ import { lowerControlFlowGraphToIR } from "./lowering";
 import { parseSync } from "./parse";
 import { validateWorkflow } from "./validate";
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
+export type N8nNode = {
+  name: string;
+  type: string;
+  typeVersion: number;
+  position: [number, number];
+  parameters: JsonObject;
+  credentials?: Record<string, { id: string; name?: string }>;
+};
 
 export type CompiledWorkflow = {
   name: string;
   settings: JsonObject;
-  nodes: NodeIR[];
+  nodes: N8nNode[];
   connections: N8nConnections;
 };
 
@@ -90,7 +100,7 @@ export function compile(input: CompileInput): CompileResult {
     workflow: {
       name: workflowIR.name,
       settings: workflowIR.settings as JsonObject,
-      nodes: workflowIR.nodes,
+      nodes: workflowIR.nodes.map(toN8nNode),
       connections: buildN8nConnections(workflowIR.edges),
     },
     diagnostics,
@@ -159,6 +169,24 @@ function buildWorkflowMetadata(
   };
 }
 
+const DEFAULT_POSITION_X_SPACING = 260;
+
+function toN8nNode(node: NodeIR, index: number): N8nNode {
+  const n8nNode: N8nNode = {
+    name: node.key,
+    type: node.n8nType,
+    typeVersion: node.typeVersion,
+    position: node.position ?? [DEFAULT_POSITION_X_SPACING * index, 0],
+    parameters: node.parameters as JsonObject,
+  };
+
+  if (node.credentials) {
+    n8nNode.credentials = node.credentials;
+  }
+
+  return n8nNode;
+}
+
 function parseWorkflowName(expression: Expression): string | null {
   if (expression.type !== "Literal") {
     return null;
@@ -183,90 +211,4 @@ function parseWorkflowSettings(expression: Expression | null): JsonObject | null
   return parseObjectExpression(expression);
 }
 
-function parseExpressionAsJson(expression: Expression): JsonValue | null {
-  if (expression.type === "Literal") {
-    const value = expression.value;
-    if (value === null) {
-      return null;
-    }
 
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return value;
-    }
-
-    return null;
-  }
-
-  if (expression.type === "ObjectExpression") {
-    return parseObjectExpression(expression);
-  }
-
-  if (expression.type === "ArrayExpression") {
-    return parseArrayExpression(expression);
-  }
-
-  return null;
-}
-
-function parseObjectExpression(expression: ObjectExpression): JsonObject | null {
-  const result: JsonObject = {};
-
-  for (const property of expression.properties) {
-    if (property.type !== "Property" || property.kind !== "init" || property.method) {
-      return null;
-    }
-
-    const key = parsePropertyKey(property.key);
-    if (!key) {
-      return null;
-    }
-
-    const value = parseExpressionAsJson(property.value);
-    if (value === null && !isNullLiteral(property.value)) {
-      return null;
-    }
-
-    result[key] = value;
-  }
-
-  return result;
-}
-
-function parseArrayExpression(expression: ArrayExpression): JsonValue[] | null {
-  const result: JsonValue[] = [];
-
-  for (const element of expression.elements) {
-    if (!element || element.type === "SpreadElement") {
-      return null;
-    }
-
-    const value = parseExpressionAsJson(element);
-    if (value === null && !isNullLiteral(element)) {
-      return null;
-    }
-
-    result.push(value);
-  }
-
-  return result;
-}
-
-function parsePropertyKey(key: unknown): string | null {
-  if (!key || typeof key !== "object" || !("type" in key)) {
-    return null;
-  }
-
-  if (key.type === "Identifier" && "name" in key && typeof key.name === "string") {
-    return key.name;
-  }
-
-  if (key.type === "Literal" && "value" in key && typeof key.value === "string") {
-    return key.value;
-  }
-
-  return null;
-}
-
-function isNullLiteral(expression: Expression): boolean {
-  return expression.type === "Literal" && expression.value === null;
-}

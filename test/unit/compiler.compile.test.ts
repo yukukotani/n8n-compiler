@@ -38,7 +38,7 @@ test("compile は parse→extract→cfg/lower→validate を統合して workflo
 
   expect(result.workflow.name).toBe("sample");
   expect(result.workflow.settings).toEqual({ timezone: "Asia/Tokyo" });
-  expect(result.workflow.nodes.map((node) => node.key)).toEqual([
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
     "manualTrigger_1",
     "if_2",
     "noOp_3",

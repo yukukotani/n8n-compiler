@@ -84,45 +84,80 @@
   "name": "workflow-determinism",
   "nodes": [
     {
-      "key": "manualTrigger_1",
-      "n8nType": "n8n-nodes-base.manualTrigger",
+      "name": "manualTrigger_1",
       "parameters": {},
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1
     },
     {
-      "key": "if_2",
-      "n8nType": "n8n-nodes-base.if",
+      "name": "if_2",
       "parameters": {},
+      "position": [
+        260,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
       "typeVersion": 1
     },
     {
-      "key": "noOp_3",
-      "n8nType": "n8n-nodes-base.noOp",
+      "name": "noOp_3",
       "parameters": {},
+      "position": [
+        520,
+        0
+      ],
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1
     },
     {
-      "key": "set_4",
-      "n8nType": "n8n-nodes-base.set",
-      "parameters": {},
+      "name": "set_4",
+      "parameters": {
+        "value": "fallback"
+      },
+      "position": [
+        780,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1
     },
     {
-      "key": "splitInBatches_5",
-      "n8nType": "n8n-nodes-base.splitInBatches",
+      "name": "splitInBatches_5",
       "parameters": {},
+      "position": [
+        1040,
+        0
+      ],
+      "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3
     },
     {
-      "key": "httpRequest_6",
-      "n8nType": "n8n-nodes-base.httpRequest",
-      "parameters": {},
+      "name": "httpRequest_6",
+      "parameters": {
+        "method": "GET",
+        "url": "https://example.com"
+      },
+      "position": [
+        1300,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1
     },
     {
-      "key": "set_7",
-      "n8nType": "n8n-nodes-base.set",
-      "parameters": {},
+      "name": "set_7",
+      "parameters": {
+        "value": "done"
+      },
+      "position": [
+        1560,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1
     }
   ],

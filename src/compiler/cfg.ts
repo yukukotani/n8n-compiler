@@ -10,6 +10,7 @@ import type {
   VariableDeclaration,
 } from "oxc-parser";
 import type { NodeKind } from "../dsl/types";
+import { parseExpressionAsJson, type JsonObject } from "./ast-json";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 
 const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
@@ -63,7 +64,7 @@ export type CfgForOfStatement = {
 
 export type CfgDslNodeCall = {
   kind: NodeKind;
-  arguments: Argument[];
+  parameters: JsonObject;
 };
 
 export type CfgIfTest =
@@ -410,9 +411,11 @@ function toNodeCall(
     return null;
   }
 
+  const parameters = parseNodeCallParameters(call.arguments);
+
   return {
     kind: call.name as NodeKind,
-    arguments: call.arguments,
+    parameters,
   };
 }
 
@@ -440,6 +443,22 @@ function readDslCall(expression: Expression): DslCall | null {
     start: expression.start,
     end: expression.end,
   };
+}
+
+function parseNodeCallParameters(args: Argument[]): JsonObject {
+  const firstArg = args[0];
+  if (!firstArg || firstArg.type === "SpreadElement") {
+    return {};
+  }
+
+  if (firstArg.type === "ObjectExpression") {
+    const parsed = parseExpressionAsJson(firstArg);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as JsonObject;
+    }
+  }
+
+  return {};
 }
 
 function pickExpressionArgument(argument: Argument | undefined): Expression | null {

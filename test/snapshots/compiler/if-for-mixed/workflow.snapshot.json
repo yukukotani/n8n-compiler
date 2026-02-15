@@ -113,57 +113,99 @@
   "name": "if-for-mixed",
   "nodes": [
     {
-      "key": "manualTrigger_1",
-      "n8nType": "n8n-nodes-base.manualTrigger",
+      "name": "manualTrigger_1",
       "parameters": {},
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1
     },
     {
-      "key": "if_2",
-      "n8nType": "n8n-nodes-base.if",
+      "name": "if_2",
       "parameters": {},
+      "position": [
+        260,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
       "typeVersion": 1
     },
     {
-      "key": "set_3",
-      "n8nType": "n8n-nodes-base.set",
-      "parameters": {},
+      "name": "set_3",
+      "parameters": {
+        "scope": "outer-true"
+      },
+      "position": [
+        520,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1
     },
     {
-      "key": "splitInBatches_4",
-      "n8nType": "n8n-nodes-base.splitInBatches",
+      "name": "splitInBatches_4",
       "parameters": {},
+      "position": [
+        780,
+        0
+      ],
+      "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3
     },
     {
-      "key": "if_5",
-      "n8nType": "n8n-nodes-base.if",
+      "name": "if_5",
       "parameters": {},
+      "position": [
+        1040,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
       "typeVersion": 1
     },
     {
-      "key": "noOp_6",
-      "n8nType": "n8n-nodes-base.noOp",
+      "name": "noOp_6",
       "parameters": {},
+      "position": [
+        1300,
+        0
+      ],
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1
     },
     {
-      "key": "set_7",
-      "n8nType": "n8n-nodes-base.set",
-      "parameters": {},
+      "name": "set_7",
+      "parameters": {
+        "scope": "inner-false"
+      },
+      "position": [
+        1560,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1
     },
     {
-      "key": "noOp_8",
-      "n8nType": "n8n-nodes-base.noOp",
+      "name": "noOp_8",
       "parameters": {},
+      "position": [
+        1820,
+        0
+      ],
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1
     },
     {
-      "key": "set_9",
-      "n8nType": "n8n-nodes-base.set",
-      "parameters": {},
+      "name": "set_9",
+      "parameters": {
+        "scope": "completed"
+      },
+      "position": [
+        2080,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1
     }
   ],

@@ -122,7 +122,7 @@ function appendNode(
     n8nType: NODE_TYPE_BY_KIND[call.kind],
     counter: context.counter,
     variableName,
-    parameters: {},
+    parameters: call.parameters,
   });
 
   context.workflow.nodes.push(node);
