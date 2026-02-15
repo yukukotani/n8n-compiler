@@ -6,3 +6,4 @@ export * from "./ir";
 export * from "./lowering";
 export * from "./parse";
 export * from "./validate";
+export * from "./compile";
