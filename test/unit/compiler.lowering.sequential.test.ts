@@ -109,7 +109,7 @@ test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () =>
   ]);
 });
 
-test("lowerControlFlowGraphToIR は if/for があっても逐次接続を壊さない", () => {
+test("lowerControlFlowGraphToIR は if を反映しつつ for を無視して逐次接続を維持する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
@@ -133,14 +133,219 @@ test("lowerControlFlowGraphToIR は if/for があっても逐次接続を壊さ�
 
   expect(workflow.nodes.map((node) => node.key)).toEqual([
     "manualTrigger_1",
-    "set_2",
+    "if_2",
+    "noOp_3",
+    "noOp_4",
+    "set_5",
   ]);
 
   expect(workflow.edges).toEqual([
     {
       from: "manualTrigger_1",
       fromOutputIndex: 0,
-      to: "set_2",
+      to: "if_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 0,
+      to: "noOp_3",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 1,
+      to: "noOp_4",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "noOp_3",
+      fromOutputIndex: 0,
+      to: "set_5",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "noOp_4",
+      fromOutputIndex: 0,
+      to: "set_5",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
+test("lowerControlFlowGraphToIR は if をノード化して true/false 出力(0/1)を使って接続する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+
+        if (n.expr("={{$json.ok}}")) {
+          n.set({ value: "ok" });
+        } else {
+          n.noOp();
+        }
+
+        n.httpRequest({ method: "GET" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "if_2",
+    "set_3",
+    "noOp_4",
+    "httpRequest_5",
+  ]);
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "if_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 0,
+      to: "set_3",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 1,
+      to: "noOp_4",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "set_3",
+      fromOutputIndex: 0,
+      to: "httpRequest_5",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "noOp_4",
+      fromOutputIndex: 0,
+      to: "httpRequest_5",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
+test("lowerControlFlowGraphToIR は else なし if の false 側を合流 frontier として扱う", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+
+        if (n.expr("={{$json.ok}}")) {
+          n.noOp();
+        }
+
+        n.set({ value: "done" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "if_2",
+    "noOp_3",
+    "set_4",
+  ]);
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "if_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 0,
+      to: "noOp_3",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "noOp_3",
+      fromOutputIndex: 0,
+      to: "set_4",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "if_2",
+      fromOutputIndex: 1,
+      to: "set_4",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
+test("lowerControlFlowGraphToIR は if(true)/if(false) を枝刈りして不要な if ノードを作らない", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+
+        if (true) {
+          n.noOp();
+        }
+
+        if (false) {
+          n.httpRequest({ method: "GET" });
+        } else {
+          n.set({ value: "fallback" });
+        }
+
+        n.noOp();
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "noOp_2",
+    "set_3",
+    "noOp_4",
+  ]);
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "noOp_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "noOp_2",
+      fromOutputIndex: 0,
+      to: "set_3",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+    {
+      from: "set_3",
+      fromOutputIndex: 0,
+      to: "noOp_4",
       toInputIndex: 0,
       kind: undefined,
     },

@@ -1,4 +1,4 @@
-import type { CfgBlock, CfgDslNodeCall, CfgStatement } from "./cfg";
+import type { CfgBlock, CfgDslNodeCall, CfgIfStatement, CfgStatement } from "./cfg";
 import {
   createEdgeIR,
   createNodeIR,
@@ -28,6 +28,7 @@ const NODE_TYPE_BY_KIND = {
   httpRequest: "n8n-nodes-base.httpRequest",
   set: "n8n-nodes-base.set",
   noOp: "n8n-nodes-base.noOp",
+  if: "n8n-nodes-base.if",
 } as const;
 
 export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput): WorkflowIR {
@@ -59,11 +60,35 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
       appendNode(statement.call, context, statement.name);
       return;
     case "If":
+      lowerIfStatement(statement, context);
+      return;
     case "ForOf":
       return;
     default:
       return assertNever(statement);
   }
+}
+
+function lowerIfStatement(statement: CfgIfStatement, context: LoweringContext): void {
+  if (statement.test.type === "BooleanLiteral") {
+    const selected = statement.test.value ? statement.consequent : statement.alternate;
+    lowerStatements(selected, context);
+    return;
+  }
+
+  const ifNodeKey = appendIfNode(context);
+  const consequentFrontier = lowerBranchWithFrontier(
+    statement.consequent,
+    [{ nodeKey: ifNodeKey, outputIndex: 0 }],
+    context,
+  );
+  const alternateFrontier = lowerBranchWithFrontier(
+    statement.alternate,
+    [{ nodeKey: ifNodeKey, outputIndex: 1 }],
+    context,
+  );
+
+  context.frontier = mergeFrontiers(consequentFrontier, alternateFrontier);
 }
 
 function appendNode(
@@ -83,6 +108,37 @@ function appendNode(
   context.workflow.nodes.push(node);
   context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
   context.frontier = [{ nodeKey: node.key, outputIndex: 0 }];
+}
+
+function appendIfNode(context: LoweringContext): string {
+  context.counter += 1;
+  const node = createNodeIR({
+    kind: "if",
+    n8nType: NODE_TYPE_BY_KIND.if,
+    counter: context.counter,
+    parameters: {},
+  });
+
+  context.workflow.nodes.push(node);
+  context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
+  return node.key;
+}
+
+function lowerBranchWithFrontier(
+  statements: CfgStatement[],
+  branchFrontier: FrontierPort[],
+  context: LoweringContext,
+): FrontierPort[] {
+  const savedFrontier = context.frontier;
+  context.frontier = branchFrontier;
+  lowerStatements(statements, context);
+  const merged = context.frontier;
+  context.frontier = savedFrontier;
+  return merged;
+}
+
+function mergeFrontiers(...groups: FrontierPort[][]): FrontierPort[] {
+  return groups.flat();
 }
 
 function buildConnectionsFromFrontier(frontier: FrontierPort[], toNodeKey: string): EdgeIR[] {
