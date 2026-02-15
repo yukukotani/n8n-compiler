@@ -324,9 +324,16 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
     allowRawStringLiteral: false,
   });
   if (directExpression !== null) {
+    // When the top-level expression is a bare node reference (no comparison/logical/unary operator),
+    // wrap with !! to ensure boolean coercion. Without this, n8n's condition check
+    // (rightValue: true, operator: { type: "boolean", operation: "true" }) would fail
+    // when the value is an object or other non-boolean truthy value.
+    const needsBooleanCoercion = test.type === "Identifier" || test.type === "MemberExpression";
     return {
       type: "ExprCall",
-      expression: directExpression,
+      expression: needsBooleanCoercion
+        ? `={{!!${directExpression.slice(3, -2)}}}`
+        : directExpression,
     };
   }
 

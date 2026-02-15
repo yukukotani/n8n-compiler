@@ -133,7 +133,7 @@ test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま
   if (firstIf?.type === "If") {
     expect(firstIf.test).toEqual({
       type: "ExprCall",
-      expression: '={{$node["check"].json.ok}}',
+      expression: '={{!!$node["check"].json.ok}}',
     });
   }
 

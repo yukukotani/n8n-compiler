@@ -13,7 +13,7 @@ export default workflow({
       url: "https://swapi.dev/api/people/1",
     });
 
-    if (check.height === 172) {
+    if (check.height) {
       n.set({
         values: {
           branch: "run",
