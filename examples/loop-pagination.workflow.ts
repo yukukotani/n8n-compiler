@@ -8,7 +8,7 @@ export default workflow({
   execute() {
     n.manualTrigger();
 
-    n.httpRequest({
+    const firstPage = n.httpRequest({
       method: "GET",
       url: "https://example.com/api/page/1",
     });
@@ -21,7 +21,7 @@ export default workflow({
 
       n.set({
         values: {
-          page,
+          total: firstPage.data.totalPages,
         },
       });
     }

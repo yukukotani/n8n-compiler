@@ -36,3 +36,27 @@ test("Authoring API の型利用サンプル（workflow / n.expr / n.loop）", (
 
   expect(definition.name).toBe("sample");
 });
+
+test("NodeRef は前ノード結果のプロパティアクセスを型エラーなしで書ける", () => {
+  const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+  // res.data はランタイムでは undefined（コンパイラは静的解析のみ）
+  expect(res.data).toBeUndefined();
+
+  // ネストしたプロパティアクセス・インデックスアクセスが型エラーにならないこと
+  void res.body;
+  void res[0];
+  void res["content-type"];
+
+  // パラメータ値として渡せること
+  const definition = workflow({
+    name: "node-ref-access",
+    execute() {
+      n.manualTrigger();
+      const req = n.httpRequest({ method: "GET", url: "https://example.com" });
+      n.set({ values: { data: req.data, status: req.headers.status } });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("node-ref-access");
+});

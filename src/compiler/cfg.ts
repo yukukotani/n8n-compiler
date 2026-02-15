@@ -85,6 +85,7 @@ export type BuildControlFlowGraphResult = {
 type BuildContext = {
   file: string;
   diagnostics: Diagnostic[];
+  nodeVariables: Set<string>;
 };
 
 type DslCall = {
@@ -101,6 +102,7 @@ export function buildControlFlowGraph(
   const context: BuildContext = {
     file,
     diagnostics: [],
+    nodeVariables: new Set(),
   };
   const executeBody = pickExecuteBody(execute, context);
   const body = buildStatements(executeBody, context);
@@ -247,6 +249,8 @@ function buildVariableDeclaration(
     if (!nodeCall) {
       continue;
     }
+
+    context.nodeVariables.add(declarator.id.name);
 
     statements.push({
       type: "Variable",
@@ -411,7 +415,7 @@ function toNodeCall(
     return null;
   }
 
-  const parameters = parseNodeCallParameters(call.arguments);
+  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables);
 
   return {
     kind: call.name as NodeKind,
@@ -445,14 +449,17 @@ function readDslCall(expression: Expression): DslCall | null {
   };
 }
 
-function parseNodeCallParameters(args: Argument[]): JsonObject {
+function parseNodeCallParameters(
+  args: Argument[],
+  nodeVariables: ReadonlySet<string>,
+): JsonObject {
   const firstArg = args[0];
   if (!firstArg || firstArg.type === "SpreadElement") {
     return {};
   }
 
   if (firstArg.type === "ObjectExpression") {
-    const parsed = parseExpressionAsJson(firstArg);
+    const parsed = parseExpressionAsJson(firstArg, nodeVariables);
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as JsonObject;
     }

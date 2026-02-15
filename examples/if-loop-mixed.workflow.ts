@@ -17,19 +17,19 @@ export default workflow({
 
       for (const item of n.loop({ batchSize: 1 })) {
         if (n.expr("={{$json.inner === true}}")) {
-          n.httpRequest({
+          const result = n.httpRequest({
             method: "POST",
             url: "https://example.com/api/process",
+          });
+
+          n.set({
+            values: {
+              processedId: result.data.id,
+            },
           });
         } else {
           n.noOp();
         }
-
-        n.set({
-          values: {
-            item,
-          },
-        });
       }
     } else {
       n.noOp();

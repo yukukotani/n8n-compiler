@@ -75,6 +75,100 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
   }
 });
 
+test("buildControlFlowGraph は前ノード変数の参照を n8n 式に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+        const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+        n.set({ values: { data: res.data, deep: res.body.items, whole: res } });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const setStatement = cfgResult.cfg.body[2];
+  expect(setStatement?.type).toBe("NodeCall");
+  if (setStatement?.type === "NodeCall") {
+    expect(setStatement.call.parameters).toEqual({
+      values: {
+        data: '={{$node["res"].json.data}}',
+        deep: '={{$node["res"].json.body.items}}',
+        whole: '={{$node["res"].json}}',
+      },
+    });
+  }
+});
+
+test("buildControlFlowGraph は computed プロパティアクセス（文字列・数値）を n8n 式に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      execute() {
+        n.manualTrigger();
+        const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+        n.set({ values: { first: res[0], keyed: res["content-type"] } });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const setStatement = cfgResult.cfg.body[2];
+  expect(setStatement?.type).toBe("NodeCall");
+  if (setStatement?.type === "NodeCall") {
+    expect(setStatement.call.parameters).toEqual({
+      values: {
+        first: '={{$node["res"].json[0]}}',
+        keyed: '={{$node["res"].json["content-type"]}}',
+      },
+    });
+  }
+});
+
 test("buildControlFlowGraph は非対応構文を diagnostics に変換する", () => {
   const sourceText = `
     export default workflow({

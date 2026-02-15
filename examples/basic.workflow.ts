@@ -8,14 +8,15 @@ export default workflow({
   execute() {
     n.manualTrigger();
 
-    n.httpRequest({
+    const res = n.httpRequest({
       method: "GET",
       url: "https://example.com/api/status",
     });
 
     n.set({
       values: {
-        status: "ok",
+        status: res.data.status,
+        code: res.statusCode,
       },
     });
   },

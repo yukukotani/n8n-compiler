@@ -8,7 +8,7 @@ export default workflow({
   execute() {
     n.manualTrigger();
 
-    n.httpRequest({
+    const check = n.httpRequest({
       method: "GET",
       url: "https://example.com/api/check",
     });
@@ -16,7 +16,7 @@ export default workflow({
     if (n.expr("={{$json.ok === true}}")) {
       n.set({
         values: {
-          branch: "true",
+          message: check.data.message,
         },
       });
     } else {
