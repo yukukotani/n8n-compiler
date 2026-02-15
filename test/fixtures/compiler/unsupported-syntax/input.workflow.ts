@@ -1,8 +1,7 @@
 export default workflow({
   name: "unsupported-syntax",
+  triggers: [n.manualTrigger()],
   execute() {
-    n.manualTrigger();
-
     return;
 
     if (ok) {

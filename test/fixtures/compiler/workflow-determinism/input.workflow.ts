@@ -4,9 +4,8 @@ export default workflow({
     timezone: "Asia/Tokyo",
     saveExecutionProgress: true,
   },
+  triggers: [n.manualTrigger()],
   execute() {
-    n.manualTrigger();
-
     if (n.expr("={{$json.ok}}")) {
       n.noOp();
     } else {

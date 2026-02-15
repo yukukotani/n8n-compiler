@@ -10,11 +10,11 @@ import type {
   VariableDeclaration,
 } from "oxc-parser";
 import type { NodeKind } from "../dsl/types";
+import { TRIGGER_NODE_KINDS } from "../dsl";
 import { parseExpressionAsJson, type JsonObject } from "./ast-json";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 
 const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
-  "manualTrigger",
   "httpRequest",
   "set",
   "noOp",
@@ -595,6 +595,16 @@ function toNodeCall(
       pushDiagnostic(context, {
         code: "E_UNSUPPORTED_STATEMENT",
         message: `n.${call.name}(...) is not a standalone node call`,
+        start: call.start,
+        end: call.end,
+      });
+      return null;
+    }
+
+    if (TRIGGER_NODE_KINDS.has(call.name)) {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: `n.${call.name}(...) is a trigger node and must be placed in the triggers array, not inside execute()`,
         start: call.start,
         end: call.end,
       });

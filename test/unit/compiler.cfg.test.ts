@@ -7,12 +7,12 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
   const sourceText = `
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
         {
           n.noOp();
         }
 
-        n.manualTrigger();
         const request = n.httpRequest({ method: "GET", url: "https://example.com" });
 
         if (request.ok == true) {
@@ -60,21 +60,20 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
   expect(cfgResult.cfg.type).toBe("Block");
   expect(cfgResult.cfg.body.map((statement) => statement.type)).toEqual([
     "Block",
-    "NodeCall",
     "Variable",
     "If",
     "If",
     "ForOf",
   ]);
 
-  const variableStatement = cfgResult.cfg.body[2];
+  const variableStatement = cfgResult.cfg.body[1];
   expect(variableStatement?.type).toBe("Variable");
   if (variableStatement?.type === "Variable") {
     expect(variableStatement.name).toBe("request");
     expect(variableStatement.call.kind).toBe("httpRequest");
   }
 
-  const ifStatement = cfgResult.cfg.body[3];
+  const ifStatement = cfgResult.cfg.body[2];
   expect(ifStatement?.type).toBe("If");
   if (ifStatement?.type === "If") {
     expect(ifStatement.test).toEqual({
@@ -88,8 +87,8 @@ test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま
   const sourceText = `
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const check = n.httpRequest({ method: "GET", url: "https://example.com" });
 
         if (check.ok) {
@@ -126,8 +125,8 @@ test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま
     throw new Error("cfg is unexpectedly null");
   }
 
-  const firstIf = cfgResult.cfg.body[2];
-  const secondIf = cfgResult.cfg.body[3];
+  const firstIf = cfgResult.cfg.body[1];
+  const secondIf = cfgResult.cfg.body[2];
 
   expect(firstIf?.type).toBe("If");
   if (firstIf?.type === "If") {
@@ -150,8 +149,8 @@ test("buildControlFlowGraph は前ノード変数の参照を n8n 式に変換�
   const sourceText = `
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const res = n.httpRequest({ method: "GET", url: "https://example.com" });
         n.set({ values: { data: res.data, deep: res.body.items, whole: res } });
       },
@@ -181,7 +180,7 @@ test("buildControlFlowGraph は前ノード変数の参照を n8n 式に変換�
     throw new Error("cfg is unexpectedly null");
   }
 
-  const setStatement = cfgResult.cfg.body[2];
+  const setStatement = cfgResult.cfg.body[1];
   expect(setStatement?.type).toBe("NodeCall");
   if (setStatement?.type === "NodeCall") {
     expect(setStatement.call.parameters).toEqual({
@@ -198,8 +197,8 @@ test("buildControlFlowGraph は computed プロパティアクセス（文字列
   const sourceText = `
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const res = n.httpRequest({ method: "GET", url: "https://example.com" });
         n.set({ values: { first: res[0], keyed: res["content-type"] } });
       },
@@ -228,7 +227,7 @@ test("buildControlFlowGraph は computed プロパティアクセス（文字列
     throw new Error("cfg is unexpectedly null");
   }
 
-  const setStatement = cfgResult.cfg.body[2];
+  const setStatement = cfgResult.cfg.body[1];
   expect(setStatement?.type).toBe("NodeCall");
   if (setStatement?.type === "NodeCall") {
     expect(setStatement.call.parameters).toEqual({
@@ -244,6 +243,7 @@ test("buildControlFlowGraph は非対応構文を diagnostics に変換する", 
   const sourceText = `
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
         return;
 
@@ -290,6 +290,45 @@ test("buildControlFlowGraph は非対応構文を diagnostics に変換する", 
       expect.objectContaining({ code: "E_UNSUPPORTED_FOR_FORM" }),
       expect.objectContaining({ code: "E_INVALID_LOOP_SOURCE" }),
       expect.objectContaining({ code: "E_UNKNOWN_NODE_CALL" }),
+    ]),
+  );
+});
+
+test("buildControlFlowGraph は execute 内の trigger 呼び出しをエラーにする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.manualTrigger();
+        n.set({ value: "ok" });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("trigger-in-execute.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("trigger-in-execute.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("trigger-in-execute.ts", entryResult.entry.execute);
+
+  expect(cfgResult.cfg).toBeNull();
+  expect(cfgResult.diagnostics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: expect.stringContaining("trigger node"),
+      }),
     ]),
   );
 });

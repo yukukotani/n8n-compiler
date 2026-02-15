@@ -4,15 +4,20 @@ export type WorkflowSettings = JsonObject;
 
 export type WorkflowExecute = () => void | Promise<void>;
 
+export type TriggerNodeKind = "manualTrigger";
+
 export type WorkflowDefinition = {
   name: string;
   settings?: WorkflowSettings;
+  triggers: NodeRef<TriggerNodeKind>[];
   execute: WorkflowExecute;
 };
 
 export type NodeParams = JsonObject;
 
 export type NodeKind = "manualTrigger" | "httpRequest" | "set" | "noOp";
+
+export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;
 
 /**
  * Node output reference.

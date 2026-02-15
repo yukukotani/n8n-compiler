@@ -1,5 +1,7 @@
-import type { Expression } from "oxc-parser";
+import type { ArrayExpression, Expression } from "oxc-parser";
+import { TRIGGER_NODE_KINDS } from "../dsl";
 import {
+  parseExpressionAsJson,
   parseObjectExpression,
   type JsonObject,
 } from "./ast-json";
@@ -8,7 +10,7 @@ import { buildControlFlowGraph } from "./cfg";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 import { extractEntry } from "./extract-entry";
 import type { NodeIR } from "./ir";
-import { lowerControlFlowGraphToIR } from "./lowering";
+import { lowerControlFlowGraphToIR, type TriggerInput } from "./lowering";
 import { parseSync } from "./parse";
 import { transformParameters } from "./transform-params";
 import { validateWorkflow } from "./validate";
@@ -74,6 +76,11 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  const triggers = runStage(diagnostics, () => parseTriggers(input.file, entry.triggers));
+  if (!triggers) {
+    return { workflow: null, diagnostics };
+  }
+
   const cfg = runStage(diagnostics, () => {
     const cfgResult = buildControlFlowGraph(input.file, entry.execute);
     return {
@@ -87,6 +94,7 @@ export function compile(input: CompileInput): CompileResult {
 
   const workflowIR = lowerControlFlowGraphToIR({
     name: metadata.name,
+    triggers,
     cfg,
   });
   workflowIR.settings = metadata.settings;
@@ -212,4 +220,121 @@ function parseWorkflowSettings(expression: Expression | null): JsonObject | null
   return parseObjectExpression(expression);
 }
 
+function parseTriggers(
+  file: string,
+  triggersExpression: Expression,
+): StageResult<TriggerInput[]> {
+  if (triggersExpression.type !== "ArrayExpression") {
+    return {
+      value: null,
+      diagnostics: [
+        createErrorDiagnostic({
+          code: "E_INVALID_TRIGGER",
+          message: "triggers must be an array literal",
+          file,
+          start: triggersExpression.start,
+          end: triggersExpression.end,
+        }),
+      ],
+    };
+  }
 
+  const arrayExpression = triggersExpression as ArrayExpression;
+  const diagnostics: Diagnostic[] = [];
+  const triggers: TriggerInput[] = [];
+
+  if (arrayExpression.elements.length === 0) {
+    diagnostics.push(
+      createErrorDiagnostic({
+        code: "E_INVALID_TRIGGER",
+        message: "triggers array must contain at least one trigger",
+        file,
+        start: arrayExpression.start,
+        end: arrayExpression.end,
+      }),
+    );
+    return { value: null, diagnostics };
+  }
+
+  for (const element of arrayExpression.elements) {
+    if (!element || element.type === "SpreadElement") {
+      diagnostics.push(
+        createErrorDiagnostic({
+          code: "E_INVALID_TRIGGER",
+          message: "trigger element must be a n.<trigger>(...) call",
+          file,
+          start: element?.start ?? arrayExpression.start,
+          end: element?.end ?? arrayExpression.end,
+        }),
+      );
+      continue;
+    }
+
+    if (element.type !== "CallExpression") {
+      diagnostics.push(
+        createErrorDiagnostic({
+          code: "E_INVALID_TRIGGER",
+          message: "trigger element must be a n.<trigger>(...) call",
+          file,
+          start: element.start,
+          end: element.end,
+        }),
+      );
+      continue;
+    }
+
+    const callee = element.callee;
+    if (
+      callee.type !== "MemberExpression" ||
+      callee.computed ||
+      callee.object.type !== "Identifier" ||
+      callee.object.name !== "n" ||
+      callee.property.type !== "Identifier"
+    ) {
+      diagnostics.push(
+        createErrorDiagnostic({
+          code: "E_INVALID_TRIGGER",
+          message: "trigger element must be a n.<trigger>(...) call",
+          file,
+          start: element.start,
+          end: element.end,
+        }),
+      );
+      continue;
+    }
+
+    const triggerName = callee.property.name;
+    if (!TRIGGER_NODE_KINDS.has(triggerName)) {
+      diagnostics.push(
+        createErrorDiagnostic({
+          code: "E_INVALID_TRIGGER",
+          message: `Unknown trigger: n.${triggerName}(...). Supported triggers: ${[...TRIGGER_NODE_KINDS].join(", ")}`,
+          file,
+          start: element.start,
+          end: element.end,
+        }),
+      );
+      continue;
+    }
+
+    const firstArg = element.arguments[0];
+    let parameters: JsonObject = {};
+    if (firstArg && firstArg.type !== "SpreadElement" && firstArg.type === "ObjectExpression") {
+      const parsed = parseExpressionAsJson(firstArg, new Set());
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        parameters = parsed as JsonObject;
+      }
+    }
+
+    triggers.push({
+      kind: triggerName,
+      parameters,
+    });
+  }
+
+  if (diagnostics.length > 0) {
+    return { value: null, diagnostics };
+  }
+
+  return { value: triggers, diagnostics: [] };
+}

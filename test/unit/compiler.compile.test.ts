@@ -6,9 +6,8 @@ test("compile は parse→extract→cfg/lower→validate を統合して workflo
     export default workflow({
       name: "sample",
       settings: { timezone: "Asia/Tokyo" },
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         if (n.expr("={{$json.ok}}")) {
           n.noOp();
         } else {
@@ -80,8 +79,8 @@ test("compile は前ノード変数参照を n8n 式に変換して workflow JSO
     export default workflow({
       name: "ref-test",
       settings: {},
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const res = n.httpRequest({ method: "GET", url: "https://example.com" });
         n.set({ values: { data: res.data, id: res.body.id } });
       },
@@ -116,6 +115,7 @@ test("compile は validate diagnostics を集約して workflow を返さない"
   const sourceText = `
     export default workflow({
       name: "invalid-workflow",
+      triggers: [],
       execute() {
         n.noOp();
       },
@@ -130,7 +130,7 @@ test("compile は validate diagnostics を集約して workflow を返さない"
   expect(result.workflow).toBeNull();
   expect(result.diagnostics).toContainEqual(
     expect.objectContaining({
-      code: "E_INVALID_WORKFLOW_SCHEMA",
+      code: "E_INVALID_TRIGGER",
       file: "invalid.ts",
     }),
   );

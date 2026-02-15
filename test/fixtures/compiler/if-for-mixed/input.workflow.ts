@@ -1,8 +1,7 @@
 export default workflow({
   name: "if-for-mixed",
+  triggers: [n.manualTrigger()],
   execute() {
-    n.manualTrigger();
-
     if (n.expr("={{$json.runOuter}}")) {
       n.set({ scope: "outer-true" });
 

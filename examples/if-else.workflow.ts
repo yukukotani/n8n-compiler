@@ -5,9 +5,8 @@ export default workflow({
   settings: {
     timezone: "Asia/Tokyo",
   },
+  triggers: [n.manualTrigger()],
   execute() {
-    n.manualTrigger();
-
     const check = n.httpRequest({
       method: "GET",
       url: "https://example.com/api/check",

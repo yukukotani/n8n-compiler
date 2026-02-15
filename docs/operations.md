@@ -40,12 +40,19 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 
 ## サポート構文と制約
 
-`execute` 内での MVP サポートは次の通りです。
+MVP サポートは次の通りです。
 
-### サポート構文
+### triggers パラメータ
+
+- `triggers` は配列リテラルで、1 つ以上のトリガーノードを指定します
+- 例: `triggers: [n.manualTrigger()]`
+- 複数指定可: `triggers: [n.manualTrigger(), n.manualTrigger()]`
+- トリガーノード（`n.manualTrigger(...)` 等）は `execute` 内に書くとエラーになります
+
+### execute 内のサポート構文
 
 - ブロック文: `{ ... }`
-- DSL ノード呼び出し: `n.manualTrigger(...)`, `n.httpRequest(...)`, `n.set(...)`, `n.noOp(...)`
+- DSL ノード呼び出し: `n.httpRequest(...)`, `n.set(...)`, `n.noOp(...)`
 - 変数代入つきノード呼び出し: `const req = n.httpRequest(...)`
 - 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
@@ -54,6 +61,7 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 ### 非サポート/制約
 
 - `execute` はブロックボディを持つ関数式/アロー関数である必要がある
+- トリガーノード（`n.manualTrigger(...)` 等）を `execute` 内で使うことは非対応（`triggers` に指定）
 - 未知の DSL 呼び出し（例: `n.unknownNode(...)`）は非対応
 - `n.expr(...)` と `n.loop(...)` を単独ノード呼び出しとして使うことは非対応
 - `if` 条件は boolean リテラル、`n.expr(...)`、または前ノード参照を使う式（例: `check.ok`, `check.ok == true`, `!check.ok`, `check.count > 0`, `check.ok && check.ready`）に対応
@@ -63,6 +71,7 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 - `return` / `while` / `switch` など、MVP 対象外ステートメントは非対応
 - `workflow.name` は文字列リテラル必須
 - `workflow.settings` は JSON オブジェクトリテラル必須（省略時 `{}`）
+- `workflow.triggers` は配列リテラル必須、1 つ以上のトリガーが必要
 
 ## 主なエラーコード
 
@@ -71,13 +80,15 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 | `E_PARSE` | TypeScript の構文解析に失敗、または入力ファイルの読み取り失敗 |
 | `E_ENTRY_NOT_FOUND` | `export default workflow({...})` が見つからない |
 | `E_EXECUTE_NOT_FOUND` | `workflow({...})` 内に `execute` が見つからない |
-| `E_UNSUPPORTED_STATEMENT` | MVP 非対応の文、または許可されない呼び出し形式 |
+| `E_TRIGGERS_NOT_FOUND` | `workflow({...})` 内に `triggers` 配列が見つからない |
+| `E_INVALID_TRIGGER` | `triggers` 配列の要素が不正（空配列、不明なトリガー種別など） |
+| `E_UNSUPPORTED_STATEMENT` | MVP 非対応の文、または許可されない呼び出し形式（execute 内の trigger 呼び出し含む） |
 | `E_UNSUPPORTED_IF_TEST` | `if` 条件が対応式（boolean / `n.expr(...)` / 前ノード参照式）以外 |
 | `E_UNSUPPORTED_FOR_FORM` | `for...of` の形が制約違反（`for await...of` 含む） |
 | `E_INVALID_LOOP_SOURCE` | `for...of` の右辺が `n.loop(...)` ではない |
 | `E_UNKNOWN_NODE_CALL` | 未知の `n.<node>(...)` 呼び出し |
 | `E_INVALID_CONNECTION` | ノード配線不整合（参照不正、if/loop の配線欠落など） |
-| `E_INVALID_WORKFLOW_SCHEMA` | workflow 必須項目不備、trigger 不在、name/settings 形式不正 |
+| `E_INVALID_WORKFLOW_SCHEMA` | workflow 必須項目不備、name/settings 形式不正 |
 | `E_API_UNAUTHORIZED` | n8n API が 401 を返した |
 | `E_API_CONFLICT` | n8n API が 409 を返した |
 | `E_API_NETWORK` | API 通信失敗、または 401/409 以外の API エラー |

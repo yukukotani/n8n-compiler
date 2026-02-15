@@ -17,9 +17,8 @@ test("Authoring API の型利用サンプル（workflow / n.expr / n.loop）", (
     settings: {
       timezone: "Asia/Tokyo",
     },
+    triggers: [n.manualTrigger()],
     execute() {
-      n.manualTrigger();
-
       if (n.expr("={{$json.ok === true}}")) {
         n.set({
           assignments: {
@@ -51,8 +50,8 @@ test("NodeRef は前ノード結果のプロパティアクセスを型エラー
   // パラメータ値として渡せること
   const definition = workflow({
     name: "node-ref-access",
+    triggers: [n.manualTrigger()],
     execute() {
-      n.manualTrigger();
       const req = n.httpRequest({ method: "GET", url: "https://example.com" });
       n.set({ values: { data: req.data, status: req.headers.status } });
     },

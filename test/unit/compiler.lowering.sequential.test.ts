@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { buildControlFlowGraph } from "../../src/compiler/cfg";
 import { extractEntry } from "../../src/compiler/extract-entry";
 import type { EdgeIR, WorkflowIR } from "../../src/compiler/ir";
-import { lowerControlFlowGraphToIR } from "../../src/compiler/lowering";
+import { lowerControlFlowGraphToIR, type TriggerInput } from "../../src/compiler/lowering";
 import { parseSync } from "../../src/compiler/parse";
 
 function lowerFromSource(sourceText: string): WorkflowIR {
@@ -32,6 +32,7 @@ function lowerFromSource(sourceText: string): WorkflowIR {
 
   return lowerControlFlowGraphToIR({
     name: "sample",
+    triggers: [{ kind: "manualTrigger", parameters: {} }],
     cfg: cfgResult.cfg,
   });
 }
@@ -55,12 +56,12 @@ function expectLoopBackEdge(
   });
 }
 
-test("lowerControlFlowGraphToIR は NodeCall/Variable を順次接続し frontier を更新する", () => {
+test("lowerControlFlowGraphToIR は triggers を先頭に配置し NodeCall/Variable を順次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const request = n.httpRequest({ method: "GET" });
         n.set({ value: "ok" });
       },
@@ -95,8 +96,8 @@ test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () =>
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         {
           n.noOp();
         }
@@ -133,9 +134,8 @@ test("lowerControlFlowGraphToIR は if と for..of n.loop() を組み合わせ�
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         if (n.expr("={{$json.ok}}")) {
           n.noOp();
         } else {
@@ -218,9 +218,8 @@ test("lowerControlFlowGraphToIR は if をノード化して true/false 出力(0
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         if (n.expr("={{$json.ok}}")) {
           n.set({ value: "ok" });
         } else {
@@ -286,9 +285,8 @@ test("lowerControlFlowGraphToIR は else なし if の false 側を合流 fronti
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         if (n.expr("={{$json.ok}}")) {
           n.noOp();
         }
@@ -341,8 +339,8 @@ test("lowerControlFlowGraphToIR は if 条件の node 参照式を if ノード 
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
         const check = n.httpRequest({ method: "GET", url: "https://example.com" });
 
         if (check.ok == true) {
@@ -370,9 +368,8 @@ test("lowerControlFlowGraphToIR は if(true)/if(false) を枝刈りして不要�
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         if (true) {
           n.noOp();
         }
@@ -424,9 +421,8 @@ test("lowerControlFlowGraphToIR は for..of n.loop() を splitInBatches と back
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
+      triggers: [n.manualTrigger()],
       execute() {
-        n.manualTrigger();
-
         for (const item of n.loop({ batchSize: 1 })) {
           n.noOp();
         }

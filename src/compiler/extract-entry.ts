@@ -13,6 +13,7 @@ type ExecuteExpression = Expression;
 export type ExtractedEntry = {
   name: Expression;
   settings: Expression | null;
+  triggers: Expression;
   execute: ExecuteExpression;
 };
 
@@ -54,35 +55,51 @@ export function extractEntry(file: string, program: Program): ExtractEntryResult
 
   const name = findObjectPropertyValue(entryObject, "name");
   const settings = findObjectPropertyValue(entryObject, "settings");
+  const triggers = findObjectPropertyValue(entryObject, "triggers");
   const execute = findObjectPropertyValue(entryObject, "execute");
 
+  const diagnostics: Diagnostic[] = [];
+
   if (!name) {
-    return {
-      entry: null,
-      diagnostics: [
-        createErrorDiagnostic({
-          code: "E_ENTRY_NOT_FOUND",
-          message: "workflow object must include name",
-          file,
-          start: entryObject.start,
-          end: entryObject.end,
-        }),
-      ],
-    };
+    diagnostics.push(
+      createErrorDiagnostic({
+        code: "E_ENTRY_NOT_FOUND",
+        message: "workflow object must include name",
+        file,
+        start: entryObject.start,
+        end: entryObject.end,
+      }),
+    );
+  }
+
+  if (!isTriggersExpression(triggers)) {
+    diagnostics.push(
+      createErrorDiagnostic({
+        code: "E_TRIGGERS_NOT_FOUND",
+        message: "workflow object must include triggers array",
+        file,
+        start: entryObject.start,
+        end: entryObject.end,
+      }),
+    );
   }
 
   if (!isExecuteExpression(execute)) {
+    diagnostics.push(
+      createErrorDiagnostic({
+        code: "E_EXECUTE_NOT_FOUND",
+        message: "workflow object must include execute function",
+        file,
+        start: entryObject.start,
+        end: entryObject.end,
+      }),
+    );
+  }
+
+  if (diagnostics.length > 0 || !name || !isTriggersExpression(triggers) || !isExecuteExpression(execute)) {
     return {
       entry: null,
-      diagnostics: [
-        createErrorDiagnostic({
-          code: "E_EXECUTE_NOT_FOUND",
-          message: "workflow object must include execute function",
-          file,
-          start: entryObject.start,
-          end: entryObject.end,
-        }),
-      ],
+      diagnostics,
     };
   }
 
@@ -90,6 +107,7 @@ export function extractEntry(file: string, program: Program): ExtractEntryResult
     entry: {
       name,
       settings,
+      triggers,
       execute,
     },
     diagnostics: [],
@@ -178,6 +196,14 @@ function findObjectProperty(
   }
 
   return null;
+}
+
+function isTriggersExpression(expression: Expression | null): expression is Expression {
+  if (!expression) {
+    return false;
+  }
+
+  return expression.type === "ArrayExpression";
 }
 
 function isExecuteExpression(expression: Expression | null): expression is ExecuteExpression {

@@ -14,8 +14,14 @@ import {
   type WorkflowIR,
 } from "./ir";
 
+export type TriggerInput = {
+  kind: string;
+  parameters: Record<string, unknown>;
+};
+
 type LowerControlFlowGraphToIRInput = {
   name: string;
+  triggers: TriggerInput[];
   cfg: CfgBlock;
 };
 
@@ -46,8 +52,29 @@ export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput)
     frontier: [],
   };
 
+  appendTriggers(input.triggers, context);
   lowerStatements(input.cfg.body, context);
   return context.workflow;
+}
+
+function appendTriggers(triggers: TriggerInput[], context: LoweringContext): void {
+  for (const trigger of triggers) {
+    const n8nType = NODE_TYPE_BY_KIND[trigger.kind as keyof typeof NODE_TYPE_BY_KIND];
+    if (!n8nType) {
+      continue;
+    }
+
+    context.counter += 1;
+    const node = createNodeIR({
+      kind: trigger.kind,
+      n8nType,
+      counter: context.counter,
+      parameters: trigger.parameters,
+    });
+
+    context.workflow.nodes.push(node);
+    context.frontier.push({ nodeKey: node.key, outputIndex: 0 });
+  }
 }
 
 function lowerStatements(statements: CfgStatement[], context: LoweringContext): void {

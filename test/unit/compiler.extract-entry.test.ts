@@ -7,6 +7,7 @@ test("extractEntry は export default workflow({...}) から主要フィール�
     export default workflow({
       name: "Sample",
       settings: {},
+      triggers: [n.manualTrigger()],
       execute: () => {
         return;
       },
@@ -36,6 +37,7 @@ test("extractEntry は export default workflow({...}) から主要フィール�
 
   expect(result.entry.name.type).toBe("Literal");
   expect(result.entry.settings.type).toBe("ObjectExpression");
+  expect(result.entry.triggers.type).toBe("ArrayExpression");
   expect(result.entry.execute.type).toBe("ArrowFunctionExpression");
 });
 
@@ -66,6 +68,7 @@ test("extractEntry は execute が無い場合 E_EXECUTE_NOT_FOUND を返す", (
     export default workflow({
       name: "Sample",
       settings: {},
+      triggers: [n.manualTrigger()],
     });
   `;
   const parseResult = parseSync("no-execute.ts", sourceText);
@@ -88,10 +91,41 @@ test("extractEntry は execute が無い場合 E_EXECUTE_NOT_FOUND を返す", (
   ]);
 });
 
+test("extractEntry は triggers が無い場合 E_TRIGGERS_NOT_FOUND を返す", () => {
+  const sourceText = `
+    export default workflow({
+      name: "Sample",
+      settings: {},
+      execute: () => {
+        return;
+      },
+    });
+  `;
+  const parseResult = parseSync("no-triggers.ts", sourceText);
+
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const result = extractEntry("no-triggers.ts", parseResult.program);
+
+  expect(result.entry).toBeNull();
+  expect(result.diagnostics).toEqual([
+    expect.objectContaining({
+      code: "E_TRIGGERS_NOT_FOUND",
+      severity: "error",
+      file: "no-triggers.ts",
+    }),
+  ]);
+});
+
 test("extractEntry は settings が無くても抽出できる", () => {
   const sourceText = `
     export default workflow({
       name: "Sample",
+      triggers: [n.manualTrigger()],
       execute: () => {
         return;
       },

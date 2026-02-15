@@ -64,7 +64,9 @@ Minimum workflow payload fields:
 
 ## 5. Authoring Model
 
-Users define a workflow with an imperative `execute` method.
+Users define a workflow with a `triggers` array and an imperative `execute` method.
+
+Triggers are specified separately from `execute`, allowing multiple triggers per workflow.
 
 Example:
 
@@ -78,9 +80,8 @@ export default workflow({
     saveDataErrorExecution: "all",
     saveDataSuccessExecution: "none",
   },
+  triggers: [n.manualTrigger()],
   execute() {
-    n.manualTrigger();
-
     n.httpRequest({
       method: "GET",
       url: "https://example.com/items",
@@ -108,6 +109,8 @@ export default workflow({
 
 ## 6. Supported Syntax (MVP)
 
+Trigger nodes (e.g. `n.manualTrigger()`) must be placed in the `triggers` array, not inside `execute`. Using trigger nodes inside `execute` is a compile error.
+
 Inside `execute`, the compiler supports:
 
 - `BlockStatement`
@@ -132,17 +135,22 @@ The project publishes TypeScript definitions for authoring.
 export type WorkflowDefinition = {
   name: string;
   settings?: WorkflowSettings;
+  triggers: NodeRef<TriggerNodeKind>[];
   execute: () => void | Promise<void>;
 };
 
 export declare function workflow(def: WorkflowDefinition): WorkflowDefinition;
 
 export declare const n: {
+  // Trigger nodes (used in `triggers` array, NOT inside `execute`)
   manualTrigger(params?: Record<string, unknown>): NodeRef;
+
+  // Action nodes (used inside `execute`)
   httpRequest(params: Record<string, unknown>): NodeRef;
   set(params: Record<string, unknown>): NodeRef;
   noOp(params?: Record<string, unknown>): NodeRef;
 
+  // Utilities
   expr(value: `={{${string}}}`): ConditionRef;
   loop(options?: { batchSize?: number; reset?: boolean }): Iterable<LoopToken>;
 };
@@ -157,11 +165,12 @@ Notes:
 
 1. Parse source with `oxc-parser`.
 2. Locate `export default workflow({...})`.
-3. Extract `name`, optional `settings`, and `execute` function body.
-4. Convert statements to CFG-like intermediate representation (IR).
-5. Lower IR into n8n `nodes` and `connections`.
-6. Validate emitted workflow schema + graph constraints.
-7. Output JSON (`compile`) and optionally deploy (`deploy`).
+3. Extract `name`, optional `settings`, `triggers` array, and `execute` function body.
+4. Parse `triggers` array into trigger IR entries.
+5. Convert `execute` statements to CFG-like intermediate representation (IR).
+6. Lower triggers + CFG into n8n `nodes` and `connections`.
+7. Validate emitted workflow schema + graph constraints.
+8. Output JSON (`compile`) and optionally deploy (`deploy`).
 
 ## 9. Intermediate Representation
 
@@ -332,6 +341,8 @@ Primary error codes:
 - `E_PARSE`
 - `E_ENTRY_NOT_FOUND`
 - `E_EXECUTE_NOT_FOUND`
+- `E_TRIGGERS_NOT_FOUND`
+- `E_INVALID_TRIGGER`
 - `E_UNSUPPORTED_STATEMENT`
 - `E_UNSUPPORTED_IF_TEST`
 - `E_UNSUPPORTED_FOR_FORM`

@@ -8,3 +8,5 @@ export function workflow<TDefinition extends WorkflowDefinition>(
 ): TDefinition {
   return definition;
 }
+
+export const TRIGGER_NODE_KINDS: ReadonlySet<string> = new Set(["manualTrigger"]);
