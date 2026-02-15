@@ -25,6 +25,7 @@ type ParamTransformer = (typeVersion: number, params: JsonObject) => JsonObject;
 const TRANSFORMERS: Record<string, ParamTransformer> = {
   "n8n-nodes-base.httpRequest": transformHttpRequest,
   "n8n-nodes-base.set": transformSet,
+  "n8n-nodes-base.if": transformIf,
 };
 
 /**
@@ -99,6 +100,42 @@ function transformSetValues(
   }
 
   return result;
+}
+
+/**
+ * If node uses a `conditions` parameter with combinator format.
+ *
+ * DSL (IR):  { expression: "={{$json.ok === true}}" }
+ * n8n:       { conditions: { conditions: [{ leftValue: "={{$json.ok === true}}", rightValue: "",
+ *               operator: { type: "boolean", operation: "true" } }], combinator: "and" },
+ *             options: {} }
+ */
+function transformIf(_typeVersion: number, params: JsonObject): JsonObject {
+  if ("expression" in params && typeof params.expression === "string") {
+    return {
+      conditions: {
+        options: {
+          caseSensitive: true,
+          leftValue: "",
+          typeValidation: "strict",
+        },
+        conditions: [
+          {
+            leftValue: params.expression,
+            rightValue: true,
+            operator: {
+              type: "boolean",
+              operation: "true",
+            },
+          },
+        ],
+        combinator: "and",
+      },
+      options: {},
+    };
+  }
+
+  return params;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

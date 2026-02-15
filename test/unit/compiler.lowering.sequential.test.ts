@@ -240,6 +240,9 @@ test("lowerControlFlowGraphToIR は if をノード化して true/false 出力(0
     "httpRequest_5",
   ]);
 
+  const ifNode = workflow.nodes.find((node) => node.key === "if_2");
+  expect(ifNode?.parameters).toEqual({ expression: "={{$json.ok}}" });
+
   expect(workflow.edges).toEqual([
     {
       from: "manualTrigger_1",

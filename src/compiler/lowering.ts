@@ -3,6 +3,7 @@ import type {
   CfgDslNodeCall,
   CfgForOfStatement,
   CfgIfStatement,
+  CfgIfTest,
   CfgStatement,
 } from "./cfg";
 import {
@@ -84,7 +85,7 @@ function lowerIfStatement(statement: CfgIfStatement, context: LoweringContext): 
     return;
   }
 
-  const ifNodeKey = appendIfNode(context);
+  const ifNodeKey = appendIfNode(statement.test, context);
   const consequentFrontier = lowerBranchWithFrontier(
     statement.consequent,
     [{ nodeKey: ifNodeKey, outputIndex: 0 }],
@@ -130,18 +131,29 @@ function appendNode(
   context.frontier = [{ nodeKey: node.key, outputIndex: 0 }];
 }
 
-function appendIfNode(context: LoweringContext): string {
+function appendIfNode(test: CfgIfTest, context: LoweringContext): string {
   context.counter += 1;
   const node = createNodeIR({
     kind: "if",
     n8nType: NODE_TYPE_BY_KIND.if,
+    typeVersion: 2,
     counter: context.counter,
-    parameters: {},
+    parameters: buildIfParameters(test),
   });
 
   context.workflow.nodes.push(node);
   context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
   return node.key;
+}
+
+function buildIfParameters(test: CfgIfTest): Record<string, unknown> {
+  if (test.type === "ExprCall") {
+    const expr = test.expression;
+    if (expr.type === "Literal" && typeof expr.value === "string") {
+      return { expression: expr.value };
+    }
+  }
+  return {};
 }
 
 function appendLoopNode(context: LoweringContext): string {

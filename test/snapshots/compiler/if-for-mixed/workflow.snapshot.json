@@ -124,13 +124,33 @@
     },
     {
       "name": "if_2",
-      "parameters": {},
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.runOuter}}",
+              "operator": {
+                "operation": "true",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
       "position": [
         260,
         0
       ],
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1
+      "typeVersion": 2
     },
     {
       "name": "set_3",
@@ -156,13 +176,33 @@
     },
     {
       "name": "if_5",
-      "parameters": {},
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.innerOk}}",
+              "operator": {
+                "operation": "true",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
       "position": [
         1040,
         0
       ],
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1
+      "typeVersion": 2
     },
     {
       "name": "noOp_6",

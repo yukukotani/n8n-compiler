@@ -120,6 +120,42 @@ describe("transformParameters", () => {
     });
   });
 
+  describe("if", () => {
+    test("expression を n8n conditions 形式に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.if", 1, {
+        expression: "={{$json.ok === true}}",
+      });
+
+      expect(result).toEqual({
+        conditions: {
+          options: {
+            caseSensitive: true,
+            leftValue: "",
+            typeValidation: "strict",
+          },
+          conditions: [
+            {
+              leftValue: "={{$json.ok === true}}",
+              rightValue: true,
+              operator: {
+                type: "boolean",
+                operation: "true",
+              },
+            },
+          ],
+          combinator: "and",
+        },
+        options: {},
+      });
+    });
+
+    test("expression がないパラメータはそのまま通す", () => {
+      const result = transformParameters("n8n-nodes-base.if", 1, {});
+
+      expect(result).toEqual({});
+    });
+  });
+
   describe("manualTrigger", () => {
     test("空パラメータはそのまま通す", () => {
       const result = transformParameters("n8n-nodes-base.manualTrigger", 1, {});
