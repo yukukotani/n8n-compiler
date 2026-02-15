@@ -30,6 +30,10 @@ test("extractEntry は export default workflow({...}) から主要フィール�
     throw new Error("entry is unexpectedly null");
   }
 
+  if (!result.entry.settings) {
+    throw new Error("settings is unexpectedly null");
+  }
+
   expect(result.entry.name.type).toBe("Literal");
   expect(result.entry.settings.type).toBe("ObjectExpression");
   expect(result.entry.execute.type).toBe("ArrowFunctionExpression");

@@ -1,1 +1,10 @@
-export {};
+import type { WorkflowDefinition } from "./types";
+
+export { n } from "./nodes";
+export type * from "./types";
+
+export function workflow<TDefinition extends WorkflowDefinition>(
+  definition: TDefinition,
+): TDefinition {
+  return definition;
+}
