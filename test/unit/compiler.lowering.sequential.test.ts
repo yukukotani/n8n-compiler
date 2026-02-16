@@ -92,6 +92,55 @@ test("lowerControlFlowGraphToIR は triggers を先頭に配置し NodeCall/Vari
   ]);
 });
 
+test("lowerControlFlowGraphToIR は webhookTrigger を n8n webhook ノードに lowering する", () => {
+  const workflow = lowerControlFlowGraphToIR({
+    name: "sample",
+    triggers: [{ kind: "webhookTrigger", parameters: { path: "incoming", httpMethod: "POST" } }],
+    cfg: { type: "Block", body: [] },
+  });
+
+  expect(workflow.nodes).toEqual([
+    expect.objectContaining({
+      key: "webhookTrigger_1",
+      n8nType: "n8n-nodes-base.webhook",
+      typeVersion: 1,
+      parameters: { path: "incoming", httpMethod: "POST" },
+    }),
+  ]);
+  expect(workflow.edges).toEqual([]);
+});
+
+test("lowerControlFlowGraphToIR は respondToWebhook を n8n respondToWebhook ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "respondToWebhook_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "respondToWebhook_2",
+      n8nType: "n8n-nodes-base.respondToWebhook",
+      parameters: { respondWith: "json", responseBody: "={{$json}}" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "respondToWebhook_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
@@ -362,6 +411,141 @@ test("lowerControlFlowGraphToIR は if 条件の node 参照式を if ノード 
 
   const ifNode = workflow.nodes.find((node) => node.key === "if_3");
   expect(ifNode?.parameters).toEqual({ expression: '={{$node["check"].json.ok == true}}' });
+});
+
+test("lowerControlFlowGraphToIR は switch を 1 ノード + case/default 分岐配線に lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const req = n.httpRequest({ method: "GET" });
+
+        switch (req.status) {
+          case 200:
+            n.set({ value: "ok" });
+            break;
+          case 404:
+            n.noOp();
+            break;
+          default:
+            n.set({ value: "fallback" });
+        }
+
+        n.httpRequest({ method: "POST" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "req",
+    "switch_3",
+    "set_4",
+    "noOp_5",
+    "set_6",
+    "httpRequest_7",
+  ]);
+
+  const switchNode = workflow.nodes.find((node) => node.key === "switch_3");
+  expect(switchNode?.n8nType).toBe("n8n-nodes-base.switch");
+  expect(switchNode?.parameters).toEqual({
+    expression: '={{$node["req"].json.status}}',
+    cases: [{ value: 200 }, { value: 404 }],
+  });
+
+  expectEdge(workflow, {
+    from: "req",
+    fromOutputIndex: 0,
+    to: "switch_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "switch_3",
+    fromOutputIndex: 0,
+    to: "set_4",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "switch_3",
+    fromOutputIndex: 1,
+    to: "noOp_5",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "switch_3",
+    fromOutputIndex: 2,
+    to: "set_6",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "set_4",
+    fromOutputIndex: 0,
+    to: "httpRequest_7",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "noOp_5",
+    fromOutputIndex: 0,
+    to: "httpRequest_7",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "set_6",
+    fromOutputIndex: 0,
+    to: "httpRequest_7",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+});
+
+test("lowerControlFlowGraphToIR は default なし switch の unmatched を後続へ接続する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const req = n.httpRequest({ method: "GET" });
+
+        switch (req.status) {
+          case 200:
+            n.set({ value: "ok" });
+            break;
+        }
+
+        n.noOp();
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "req",
+    "switch_3",
+    "set_4",
+    "noOp_5",
+  ]);
+
+  expectEdge(workflow, {
+    from: "switch_3",
+    fromOutputIndex: 0,
+    to: "set_4",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "switch_3",
+    fromOutputIndex: 1,
+    to: "noOp_5",
+    toInputIndex: 0,
+    kind: undefined,
+  });
 });
 
 test("lowerControlFlowGraphToIR は if(true)/if(false) を枝刈りして不要な if ノードを作らない", () => {

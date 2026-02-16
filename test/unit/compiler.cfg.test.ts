@@ -3,7 +3,7 @@ import { buildControlFlowGraph } from "../../src/compiler/cfg";
 import { extractEntry } from "../../src/compiler/extract-entry";
 import { parseSync } from "../../src/compiler/parse";
 
-test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) を受理する", () => {
+test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/Switch/ForOf) を受理する", () => {
   const sourceText = `
     export default workflow({
       name: "sample",
@@ -23,6 +23,14 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
 
         if (true) {
           n.noOp();
+        }
+
+        switch (request.status) {
+          case 200:
+            n.set({ value: "ok" });
+            break;
+          default:
+            n.noOp();
         }
 
         for (const item of n.loop({ batchSize: 1 })) {
@@ -63,6 +71,7 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
     "Variable",
     "If",
     "If",
+    "Switch",
     "ForOf",
   ]);
 
@@ -81,6 +90,135 @@ test("buildControlFlowGraph は MVP 構文 (Block/Expression/Variable/If/ForOf) 
       expression: '={{$node["request"].json.ok == true}}',
     });
   }
+
+  const switchStatement = cfgResult.cfg.body[4];
+  expect(switchStatement?.type).toBe("Switch");
+  if (switchStatement?.type === "Switch") {
+    expect(switchStatement.discriminant).toBe('={{$node["request"].json.status}}');
+    expect(switchStatement.cases).toEqual([
+      {
+        test: 200,
+        consequent: [
+          {
+            type: "NodeCall",
+            call: {
+              kind: "set",
+              parameters: { value: "ok" },
+            },
+          },
+        ],
+      },
+    ]);
+    expect(switchStatement.defaultCase).toEqual([
+      {
+        type: "NodeCall",
+        call: {
+          kind: "noOp",
+          parameters: {},
+        },
+      },
+    ]);
+  }
+});
+
+test("buildControlFlowGraph は TS の switch 構文を CFG の Switch として受理する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        switch (res.kind) {
+          case "ok":
+            n.set({ value: "ok" });
+            break;
+          case null:
+            n.noOp();
+            break;
+          default:
+            n.set({ value: "fallback" });
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const switchStatement = cfgResult.cfg.body[1];
+  expect(switchStatement?.type).toBe("Switch");
+  if (switchStatement?.type === "Switch") {
+    expect(switchStatement.discriminant).toBe('={{$node["res"].json.kind}}');
+    expect(switchStatement.cases.map((entry) => entry.test)).toEqual(["ok", null]);
+    expect(switchStatement.defaultCase).not.toBeNull();
+  }
+});
+
+test("buildControlFlowGraph は switch の fallthrough を diagnostics に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        switch (res.kind) {
+          case "ok":
+            n.set({ value: "ok" });
+          default:
+            n.noOp();
+            break;
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.cfg).toBeNull();
+  expect(cfgResult.diagnostics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: expect.stringContaining("fallthrough"),
+      }),
+    ]),
+  );
 });
 
 test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま書ける", () => {
@@ -239,6 +377,51 @@ test("buildControlFlowGraph は computed プロパティアクセス（文字列
   }
 });
 
+test("buildControlFlowGraph は execute 内の respondToWebhook 呼び出しを受理する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const statement = cfgResult.cfg.body[0];
+  expect(statement?.type).toBe("NodeCall");
+  if (statement?.type === "NodeCall") {
+    expect(statement.call.kind).toBe("respondToWebhook");
+    expect(statement.call.parameters).toEqual({
+      respondWith: "json",
+      responseBody: "={{$json}}",
+    });
+  }
+});
+
 test("buildControlFlowGraph は非対応構文を diagnostics に変換する", () => {
   const sourceText = `
     export default workflow({
@@ -340,6 +523,45 @@ test("buildControlFlowGraph は execute 内の trigger 呼び出しをエラー�
       triggers: [n.manualTrigger()],
       execute() {
         n.manualTrigger();
+        n.set({ value: "ok" });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("trigger-in-execute.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("trigger-in-execute.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("trigger-in-execute.ts", entryResult.entry.execute);
+
+  expect(cfgResult.cfg).toBeNull();
+  expect(cfgResult.diagnostics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: expect.stringContaining("trigger node"),
+      }),
+    ]),
+  );
+});
+
+test("buildControlFlowGraph は execute 内の webhookTrigger 呼び出しをエラーにする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
         n.set({ value: "ok" });
       },
     });

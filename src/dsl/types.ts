@@ -4,7 +4,7 @@ export type WorkflowSettings = JsonObject;
 
 export type WorkflowExecute = () => void | Promise<void>;
 
-export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger";
+export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger" | "webhookTrigger";
 
 // --- Schedule Trigger params ---
 
@@ -60,7 +60,15 @@ export type WorkflowDefinition = {
 
 export type NodeParams = JsonObject;
 
-export type NodeKind = "manualTrigger" | "scheduleTrigger" | "httpRequest" | "set" | "noOp";
+export type NodeKind =
+  | "manualTrigger"
+  | "scheduleTrigger"
+  | "webhookTrigger"
+  | "httpRequest"
+  | "respondToWebhook"
+  | "switch"
+  | "set"
+  | "noOp";
 
 export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;
 

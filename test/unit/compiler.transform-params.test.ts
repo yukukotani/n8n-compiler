@@ -156,6 +156,40 @@ describe("transformParameters", () => {
     });
   });
 
+  describe("switch", () => {
+    test("expression/cases を switch の rules 形式に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.switch", 3, {
+        expression: '={{$node["req"].json.status}}',
+        cases: [{ value: 200 }, { value: "ok" }, { value: null }],
+      });
+
+      expect(result).toEqual({
+        mode: "rules",
+        value: '={{$node["req"].json.status}}',
+        rules: {
+          values: [
+            { outputIndex: 0, operation: "equal", value: 200 },
+            { outputIndex: 1, operation: "equal", value: "ok" },
+            { outputIndex: 2, operation: "equal", value: null },
+          ],
+        },
+        fallbackOutput: "extra",
+      });
+    });
+
+    test("内部表現でないパラメータはそのまま通す", () => {
+      const result = transformParameters("n8n-nodes-base.switch", 3, {
+        mode: "rules",
+        foo: "bar",
+      });
+
+      expect(result).toEqual({
+        mode: "rules",
+        foo: "bar",
+      });
+    });
+  });
+
   describe("manualTrigger", () => {
     test("空パラメータはそのまま通す", () => {
       const result = transformParameters("n8n-nodes-base.manualTrigger", 1, {});

@@ -4,6 +4,7 @@ import type {
   CfgForOfStatement,
   CfgIfStatement,
   CfgIfTest,
+  CfgSwitchStatement,
   CfgStatement,
 } from "./cfg";
 import {
@@ -39,7 +40,10 @@ type LoweringContext = {
 const NODE_TYPE_BY_KIND = {
   manualTrigger: "n8n-nodes-base.manualTrigger",
   scheduleTrigger: "n8n-nodes-base.scheduleTrigger",
+  webhookTrigger: "n8n-nodes-base.webhook",
   httpRequest: "n8n-nodes-base.httpRequest",
+  respondToWebhook: "n8n-nodes-base.respondToWebhook",
+  switch: "n8n-nodes-base.switch",
   set: "n8n-nodes-base.set",
   noOp: "n8n-nodes-base.noOp",
   if: "n8n-nodes-base.if",
@@ -103,6 +107,9 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
     case "If":
       lowerIfStatement(statement, context);
       return;
+    case "Switch":
+      lowerSwitchStatement(statement, context);
+      return;
     case "ForOf":
       lowerForOfStatement(statement, context);
       return;
@@ -143,6 +150,27 @@ function lowerForOfStatement(statement: CfgForOfStatement, context: LoweringCont
 
   context.workflow.edges.push(...buildLoopBackEdges(bodyTerminalFrontier, loopNodeKey));
   context.frontier = [{ nodeKey: loopNodeKey, outputIndex: 0 }];
+}
+
+function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringContext): void {
+  const switchNodeKey = appendSwitchNode(statement, context);
+  const caseFrontiers = statement.cases.map((caseClause, index) => {
+    return lowerBranchWithFrontier(
+      caseClause.consequent,
+      [{ nodeKey: switchNodeKey, outputIndex: index }],
+      context,
+    );
+  });
+  const unmatchedOutputIndex = statement.cases.length;
+  const defaultFrontier = statement.defaultCase
+    ? lowerBranchWithFrontier(
+        statement.defaultCase,
+        [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex }],
+        context,
+      )
+    : [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex }];
+
+  context.frontier = mergeFrontiers(...caseFrontiers, defaultFrontier);
 }
 
 function appendNode(
@@ -194,6 +222,24 @@ function appendLoopNode(context: LoweringContext): string {
     typeVersion: 3,
     counter: context.counter,
     parameters: {},
+  });
+
+  context.workflow.nodes.push(node);
+  context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
+  return node.key;
+}
+
+function appendSwitchNode(statement: CfgSwitchStatement, context: LoweringContext): string {
+  context.counter += 1;
+  const node = createNodeIR({
+    kind: "switch",
+    n8nType: NODE_TYPE_BY_KIND.switch,
+    typeVersion: 3,
+    counter: context.counter,
+    parameters: {
+      expression: statement.discriminant,
+      cases: statement.cases.map((caseClause) => ({ value: caseClause.test })),
+    },
   });
 
   context.workflow.nodes.push(node);

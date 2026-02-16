@@ -32,8 +32,20 @@ export const n = {
     return createNodeRef("scheduleTrigger", params);
   },
 
+  webhookTrigger(params: NodeParams = {}): NodeRef<"webhookTrigger"> {
+    return createNodeRef("webhookTrigger", params);
+  },
+
   httpRequest(params: NodeParams): NodeRef<"httpRequest"> {
     return createNodeRef("httpRequest", params);
+  },
+
+  respondToWebhook(params: NodeParams): NodeRef<"respondToWebhook"> {
+    return createNodeRef("respondToWebhook", params);
+  },
+
+  switch(params: NodeParams): NodeRef<"switch"> {
+    return createNodeRef("switch", params);
   },
 
   set(params: NodeParams): NodeRef<"set"> {

@@ -20,6 +20,7 @@ type WorkflowShape = {
 const TRIGGER_NODE_TYPES = new Set<string>([
   "n8n-nodes-base.manualTrigger",
   "n8n-nodes-base.scheduleTrigger",
+  "n8n-nodes-base.webhook",
 ]);
 
 export function validateWorkflow(file: string, workflow: WorkflowIR): ValidateWorkflowResult {
@@ -139,6 +140,7 @@ function validateReferencePhase(edges: EdgeIR[], nodes: NodeIR[], context: Valid
 
 function validateControlFlowPhase(edges: EdgeIR[], nodes: NodeIR[], context: ValidationContext): void {
   validateIfWiring(nodes, edges, context);
+  validateSwitchWiring(nodes, edges, context);
   validateLoopWiring(nodes, edges, context);
 }
 
@@ -200,6 +202,42 @@ function validateLoopWiring(nodes: NodeIR[], edges: EdgeIR[], context: Validatio
       );
     }
   }
+}
+
+function validateSwitchWiring(nodes: NodeIR[], edges: EdgeIR[], context: ValidationContext): void {
+  const switchNodes = nodes.filter((node) => node.n8nType === "n8n-nodes-base.switch");
+
+  for (const node of switchNodes) {
+    const caseCount = readSwitchCaseCount(node.parameters);
+    if (caseCount === null) {
+      continue;
+    }
+
+    const maxOutputIndex = caseCount;
+    const outgoing = edges.filter((edge) => edge.from === node.key && edge.kind !== "loop-back");
+    const outputIndexes = new Set(outgoing.map((edge) => edge.fromOutputIndex));
+
+    for (const index of outputIndexes) {
+      if (index < 0 || index > maxOutputIndex) {
+        pushConnectionDiagnostic(
+          context,
+          `switch node ${node.key} must only use output indexes 0..${maxOutputIndex}, found ${index}`,
+        );
+      }
+    }
+  }
+}
+
+function readSwitchCaseCount(parameters: unknown): number | null {
+  if (!isRecord(parameters)) {
+    return null;
+  }
+
+  if (!("cases" in parameters) || !Array.isArray(parameters.cases)) {
+    return null;
+  }
+
+  return parameters.cases.length;
 }
 
 function pushSchemaDiagnostic(context: ValidationContext, message: string): void {

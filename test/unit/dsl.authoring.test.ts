@@ -131,3 +131,57 @@ test("Schedule 型は type ごとに discriminated union として機能する",
   const trigger = n.scheduleTrigger(params);
   expect(trigger.params.schedules).toHaveLength(7);
 });
+
+test("respondToWebhook を ActionNode として定義できる", () => {
+  const node = n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("respondToWebhook");
+  expect(node.params).toEqual({ respondWith: "json", responseBody: "={{$json}}" });
+
+  const definition = workflow({
+    name: "respond-to-webhook-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("respond-to-webhook-workflow");
+});
+
+test("switch を ActionNode として定義できる", () => {
+  const node = n.switch({ expression: "={{$json.kind}}", cases: [{ value: "ok" }] });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("switch");
+  expect(node.params).toEqual({ expression: "={{$json.kind}}", cases: [{ value: "ok" }] });
+
+  const definition = workflow({
+    name: "switch-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.switch({ expression: "={{$json.kind}}", cases: [{ value: "ok" }] });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("switch-workflow");
+});
+
+test("webhookTrigger を TriggerNode として定義できる", () => {
+  const trigger = n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
+
+  expect(trigger.__brand).toBe("NodeRef");
+  expect(trigger.kind).toBe("webhookTrigger");
+  expect(trigger.params).toEqual({ path: "incoming", httpMethod: "POST" });
+
+  const definition = workflow({
+    name: "webhook-workflow",
+    triggers: [trigger],
+    execute() {
+      n.noOp();
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("webhook-workflow");
+});

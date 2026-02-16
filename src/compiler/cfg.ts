@@ -7,6 +7,8 @@ import type {
   FunctionBody,
   IfStatement,
   Statement,
+  SwitchCase,
+  SwitchStatement,
   VariableDeclaration,
 } from "oxc-parser";
 import type { NodeKind } from "../dsl/types";
@@ -16,6 +18,8 @@ import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 
 const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "httpRequest",
+  "respondToWebhook",
+  "switch",
   "set",
   "noOp",
 ];
@@ -32,6 +36,7 @@ export type CfgStatement =
   | CfgNodeCallStatement
   | CfgVariableStatement
   | CfgIfStatement
+  | CfgSwitchStatement
   | CfgForOfStatement;
 
 export type CfgNodeCallStatement = {
@@ -60,6 +65,18 @@ export type CfgForOfStatement = {
     options: Expression | null;
   };
   body: CfgStatement[];
+};
+
+export type CfgSwitchStatement = {
+  type: "Switch";
+  discriminant: string;
+  cases: CfgSwitchCase[];
+  defaultCase: CfgStatement[] | null;
+};
+
+export type CfgSwitchCase = {
+  test: string | number | boolean | null;
+  consequent: CfgStatement[];
 };
 
 export type CfgDslNodeCall = {
@@ -195,6 +212,8 @@ function buildStatement(statement: Statement, context: BuildContext): CfgStateme
       return buildVariableDeclaration(statement, context);
     case "IfStatement":
       return buildIfStatement(statement, context);
+    case "SwitchStatement":
+      return buildSwitchStatement(statement, context);
     case "ForOfStatement":
       return buildForOfStatement(statement, context);
     default:
@@ -564,6 +583,123 @@ function buildForOfStatement(statement: ForOfStatement, context: BuildContext): 
       body: buildStatements(toStatementList(statement.body), context),
     },
   ];
+}
+
+function buildSwitchStatement(statement: SwitchStatement, context: BuildContext): CfgStatement[] {
+  const discriminant = buildIfExpressionString(statement.discriminant, context.nodeVariables, {
+    allowRawStringLiteral: false,
+  });
+
+  if (discriminant === null) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "switch discriminant must be a serializable expression",
+      start: statement.discriminant.start,
+      end: statement.discriminant.end,
+    });
+    return [];
+  }
+
+  const cases: CfgSwitchCase[] = [];
+  let defaultCase: CfgStatement[] | null = null;
+
+  for (const [index, switchCase] of statement.cases.entries()) {
+    const isLast = index === statement.cases.length - 1;
+    const caseStatements = buildSwitchCaseConsequent(switchCase, isLast, context);
+    if (caseStatements === null) {
+      continue;
+    }
+
+    if (switchCase.test === null) {
+      defaultCase = caseStatements;
+      continue;
+    }
+
+    const test = toSwitchCaseLiteral(switchCase.test);
+    if (test === undefined) {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: "switch case test must be a literal (string/number/boolean/null)",
+        start: switchCase.test.start,
+        end: switchCase.test.end,
+      });
+      continue;
+    }
+
+    cases.push({
+      test,
+      consequent: caseStatements,
+    });
+  }
+
+  return [
+    {
+      type: "Switch",
+      discriminant,
+      cases,
+      defaultCase,
+    },
+  ];
+}
+
+function buildSwitchCaseConsequent(
+  switchCase: SwitchCase,
+  isLastCase: boolean,
+  context: BuildContext,
+): CfgStatement[] | null {
+  const consequent = switchCase.consequent;
+  const breakIndex = consequent.findIndex((statement) => statement.type === "BreakStatement");
+
+  if (breakIndex >= 0) {
+    const breakStatement = consequent[breakIndex];
+    if (!breakStatement || breakStatement.type !== "BreakStatement") {
+      return null;
+    }
+
+    if (breakStatement.label !== null || breakIndex !== consequent.length - 1) {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: "switch case only supports trailing unlabeled break",
+        start: breakStatement.start,
+        end: breakStatement.end,
+      });
+      return null;
+    }
+
+    return buildStatements(consequent.slice(0, -1), context);
+  }
+
+  if (!isLastCase) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "switch case fallthrough is not supported in MVP; add break",
+      start: switchCase.start,
+      end: switchCase.end,
+    });
+    return null;
+  }
+
+  return buildStatements(consequent, context);
+}
+
+function toSwitchCaseLiteral(expression: Expression): string | number | boolean | null | undefined {
+  if (expression.type !== "Literal") {
+    return undefined;
+  }
+
+  if (expression.value === null) {
+    return null;
+  }
+
+  if (typeof expression.value === "string" || typeof expression.value === "boolean") {
+    return expression.value;
+  }
+
+  if (typeof expression.value === "number") {
+    return Number.isFinite(expression.value) ? expression.value : undefined;
+  }
+
+  return undefined;
 }
 
 function toStatementList(statement: Statement): Statement[] {

@@ -193,6 +193,149 @@ test("compile は manualTrigger と scheduleTrigger を併用できる", () => {
   expect(result.workflow.nodes[1]?.typeVersion).toBe(1.2);
 });
 
+test("compile は webhookTrigger を n8n webhook ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "webhook",
+      settings: {},
+      triggers: [n.webhookTrigger({ path: "incoming", httpMethod: "POST" })],
+      execute() {
+        n.set({ value: "ok" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "webhook.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["webhookTrigger_1", "set_2"]);
+  expect(result.workflow.nodes[0]?.type).toBe("n8n-nodes-base.webhook");
+  expect(result.workflow.nodes[0]?.parameters).toEqual({ path: "incoming", httpMethod: "POST" });
+
+  expect(result.workflow.connections).toEqual({
+    webhookTrigger_1: {
+      main: [[{ node: "set_2", type: "main", index: 0 }]],
+    },
+  });
+});
+
+test("compile は respondToWebhook を n8n respondToWebhook ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "respond",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "respond.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "respondToWebhook_2",
+  ]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.respondToWebhook");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    respondWith: "json",
+    responseBody: "={{$json}}",
+  });
+
+  expect(result.workflow.connections).toEqual({
+    manualTrigger_1: {
+      main: [[{ node: "respondToWebhook_2", type: "main", index: 0 }]],
+    },
+  });
+});
+
+test("compile は TS switch 構文を switch ノード + 分岐接続にコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "switch-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        const req = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        switch (req.status) {
+          case 200:
+            n.set({ value: "ok" });
+            break;
+          case 404:
+            n.noOp();
+            break;
+        }
+
+        n.set({ value: "done" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "switch.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "req",
+    "switch_3",
+    "set_4",
+    "noOp_5",
+    "set_6",
+  ]);
+
+  const switchNode = result.workflow.nodes.find((node) => node.name === "switch_3");
+  expect(switchNode?.type).toBe("n8n-nodes-base.switch");
+  expect(switchNode?.parameters).toEqual({
+    mode: "rules",
+    value: '={{$node["req"].json.status}}',
+    rules: {
+      values: [
+        { outputIndex: 0, operation: "equal", value: 200 },
+        { outputIndex: 1, operation: "equal", value: 404 },
+      ],
+    },
+    fallbackOutput: "extra",
+  });
+
+  expect(result.workflow.connections.switch_3).toEqual({
+    main: [
+      [{ node: "set_4", type: "main", index: 0 }],
+      [{ node: "noOp_5", type: "main", index: 0 }],
+      [{ node: "set_6", type: "main", index: 0 }],
+    ],
+  });
+});
+
 test("compile は validate diagnostics を集約して workflow を返さない", () => {
   const sourceText = `
     export default workflow({

@@ -26,6 +26,7 @@ const TRANSFORMERS: Record<string, ParamTransformer> = {
   "n8n-nodes-base.httpRequest": transformHttpRequest,
   "n8n-nodes-base.set": transformSet,
   "n8n-nodes-base.if": transformIf,
+  "n8n-nodes-base.switch": transformSwitch,
   "n8n-nodes-base.scheduleTrigger": transformScheduleTrigger,
 };
 
@@ -137,6 +138,54 @@ function transformIf(_typeVersion: number, params: JsonObject): JsonObject {
   }
 
   return params;
+}
+
+/**
+ * Switch node (MVP internal form)
+ *
+ * DSL/IR: { expression: "={{...}}", cases: [{ value: <literal> }, ...] }
+ * n8n-ish: { mode: "rules", value: "={{...}}", rules: { values: [...] }, fallbackOutput: "extra" }
+ */
+function transformSwitch(_typeVersion: number, params: JsonObject): JsonObject {
+  if (typeof params.expression !== "string" || !Array.isArray(params.cases)) {
+    return params;
+  }
+
+  const rules = params.cases
+    .map((entry, index) => {
+      if (!isPlainObject(entry) || !("value" in entry)) {
+        return null;
+      }
+
+      const value = (entry as Record<string, unknown>).value;
+      if (!isSwitchLiteral(value)) {
+        return null;
+      }
+
+      return {
+        outputIndex: index,
+        operation: "equal",
+        value,
+      };
+    })
+    .filter((entry): entry is { outputIndex: number; operation: "equal"; value: SwitchLiteral } => {
+      return entry !== null;
+    });
+
+  return {
+    mode: "rules",
+    value: params.expression,
+    rules: {
+      values: rules,
+    },
+    fallbackOutput: "extra",
+  };
+}
+
+type SwitchLiteral = string | number | boolean | null;
+
+function isSwitchLiteral(value: unknown): value is SwitchLiteral {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
 }
 
 /**
