@@ -69,6 +69,7 @@ export type NodeKind =
   | "respondToWebhook"
   | "switch"
   | "set"
+  | "wait"
   | "noOp";
 
 export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;

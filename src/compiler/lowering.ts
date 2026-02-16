@@ -46,6 +46,7 @@ const NODE_TYPE_BY_KIND = {
   respondToWebhook: "n8n-nodes-base.respondToWebhook",
   switch: "n8n-nodes-base.switch",
   set: "n8n-nodes-base.set",
+  wait: "n8n-nodes-base.wait",
   noOp: "n8n-nodes-base.noOp",
   if: "n8n-nodes-base.if",
   splitInBatches: "n8n-nodes-base.splitInBatches",

@@ -22,6 +22,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "respondToWebhook",
   "switch",
   "set",
+  "wait",
   "noOp",
 ];
 

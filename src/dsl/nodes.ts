@@ -56,6 +56,10 @@ export const n = {
     return createNodeRef("set", params);
   },
 
+  wait(params: NodeParams): NodeRef<"wait"> {
+    return createNodeRef("wait", params);
+  },
+
   noOp(params: NodeParams = {}): NodeRef<"noOp"> {
     return createNodeRef("noOp", params);
   },

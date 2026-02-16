@@ -172,6 +172,37 @@ test("lowerControlFlowGraphToIR は merge を n8n merge ノードに lowering �
   ]);
 });
 
+test("lowerControlFlowGraphToIR は wait を n8n wait ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.wait({ amount: 1, unit: "minutes", resume: "timeInterval" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "wait_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "wait_2",
+      n8nType: "n8n-nodes-base.wait",
+      parameters: { amount: 1, unit: "minutes", resume: "timeInterval" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "wait_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({

@@ -298,6 +298,39 @@ test("compile は merge を n8n merge ノードとしてコンパイルする", 
   expect(result.workflow.nodes[1]?.parameters).toEqual({ mode: "append" });
 });
 
+test("compile は wait を n8n wait ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "wait-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.wait({ amount: 1, unit: "minutes", resume: "timeInterval" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "wait.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "wait_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.wait");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    amount: 1,
+    unit: "minutes",
+    resume: "timeInterval",
+  });
+});
+
 test("compile は TS switch 構文を switch ノード + 分岐接続にコンパイルする", () => {
   const sourceText = `
     export default workflow({

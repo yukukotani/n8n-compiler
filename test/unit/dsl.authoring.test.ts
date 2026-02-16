@@ -186,6 +186,24 @@ test("merge を ActionNode として定義できる", () => {
   expect(definition.name).toBe("merge-workflow");
 });
 
+test("wait を ActionNode として定義できる", () => {
+  const node = n.wait({ amount: 1, unit: "minutes" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("wait");
+  expect(node.params).toEqual({ amount: 1, unit: "minutes" });
+
+  const definition = workflow({
+    name: "wait-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.wait({ amount: 1, unit: "minutes" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("wait-workflow");
+});
+
 test("webhookTrigger を TriggerNode として定義できる", () => {
   const trigger = n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
 
