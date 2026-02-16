@@ -48,6 +48,10 @@ export const n = {
     return createNodeRef("filter", params);
   },
 
+  limit(params: NodeParams): NodeRef<"limit"> {
+    return createNodeRef("limit", params);
+  },
+
   merge(params: NodeParams): NodeRef<"merge"> {
     return createNodeRef("merge", params);
   },

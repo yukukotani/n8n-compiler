@@ -44,6 +44,7 @@ const NODE_TYPE_BY_KIND = {
   httpRequest: "n8n-nodes-base.httpRequest",
   aggregate: "n8n-nodes-base.aggregate",
   filter: "n8n-nodes-base.filter",
+  limit: "n8n-nodes-base.limit",
   merge: "n8n-nodes-base.merge",
   respondToWebhook: "n8n-nodes-base.respondToWebhook",
   sort: "n8n-nodes-base.sort",

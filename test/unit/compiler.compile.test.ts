@@ -472,6 +472,38 @@ test("compile は filter を n8n filter ノードとしてコンパイルする"
   });
 });
 
+test("compile は limit を n8n limit ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "limit-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.limit({ maxItems: 10, keep: "firstItems" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "limit.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "limit_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.limit");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    maxItems: 10,
+    keep: "firstItems",
+  });
+});
+
 test("compile は TS switch 構文を switch ノード + 分岐接続にコンパイルする", () => {
   const sourceText = `
     export default workflow({

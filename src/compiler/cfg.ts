@@ -20,6 +20,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "httpRequest",
   "aggregate",
   "filter",
+  "limit",
   "merge",
   "respondToWebhook",
   "sort",

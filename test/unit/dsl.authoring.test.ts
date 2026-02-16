@@ -315,6 +315,24 @@ test("filter を ActionNode として定義できる", () => {
   expect(definition.name).toBe("filter-workflow");
 });
 
+test("limit を ActionNode として定義できる", () => {
+  const node = n.limit({ maxItems: 10 });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("limit");
+  expect(node.params).toEqual({ maxItems: 10 });
+
+  const definition = workflow({
+    name: "limit-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.limit({ maxItems: 10 });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("limit-workflow");
+});
+
 test("webhookTrigger を TriggerNode として定義できる", () => {
   const trigger = n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
 

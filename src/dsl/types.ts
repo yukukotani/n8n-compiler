@@ -67,6 +67,7 @@ export type NodeKind =
   | "httpRequest"
   | "aggregate"
   | "filter"
+  | "limit"
   | "merge"
   | "respondToWebhook"
   | "sort"

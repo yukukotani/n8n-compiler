@@ -700,6 +700,48 @@ test("buildControlFlowGraph は execute 内の filter 呼び出しを受理す�
   }
 });
 
+test("buildControlFlowGraph は execute 内の limit 呼び出しを受理する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.limit({ maxItems: 10, keep: "firstItems" });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const statement = cfgResult.cfg.body[0];
+  expect(statement?.type).toBe("NodeCall");
+  if (statement?.type === "NodeCall") {
+    expect(statement.call.kind).toBe("limit");
+    expect(statement.call.parameters).toEqual({ maxItems: 10, keep: "firstItems" });
+  }
+});
+
 test("buildControlFlowGraph は非対応構文を diagnostics に変換する", () => {
   const sourceText = `
     export default workflow({

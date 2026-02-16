@@ -347,6 +347,37 @@ test("lowerControlFlowGraphToIR は filter を n8n filter ノードに lowering 
   ]);
 });
 
+test("lowerControlFlowGraphToIR は limit を n8n limit ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.limit({ maxItems: 10, keep: "firstItems" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "limit_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "limit_2",
+      n8nType: "n8n-nodes-base.limit",
+      parameters: { maxItems: 10, keep: "firstItems" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "limit_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
