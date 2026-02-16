@@ -46,6 +46,7 @@ const NODE_TYPE_BY_KIND = {
   filter: "n8n-nodes-base.filter",
   limit: "n8n-nodes-base.limit",
   merge: "n8n-nodes-base.merge",
+  removeDuplicates: "n8n-nodes-base.removeduplicates",
   respondToWebhook: "n8n-nodes-base.respondToWebhook",
   sort: "n8n-nodes-base.sort",
   splitOut: "n8n-nodes-base.splitout",

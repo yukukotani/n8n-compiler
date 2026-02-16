@@ -222,6 +222,24 @@ test("merge を ActionNode として定義できる", () => {
   expect(definition.name).toBe("merge-workflow");
 });
 
+test("removeDuplicates を ActionNode として定義できる", () => {
+  const node = n.removeDuplicates({ fieldsToCompare: "selectedFields", fields: "email" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("removeDuplicates");
+  expect(node.params).toEqual({ fieldsToCompare: "selectedFields", fields: "email" });
+
+  const definition = workflow({
+    name: "remove-duplicates-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.removeDuplicates({ fieldsToCompare: "selectedFields", fields: "email" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("remove-duplicates-workflow");
+});
+
 test("aggregate を ActionNode として定義できる", () => {
   const node = n.aggregate({ aggregate: "sum", field: "amount" });
 

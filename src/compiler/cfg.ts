@@ -22,6 +22,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "filter",
   "limit",
   "merge",
+  "removeDuplicates",
   "respondToWebhook",
   "sort",
   "splitOut",

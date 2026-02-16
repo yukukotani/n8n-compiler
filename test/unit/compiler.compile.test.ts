@@ -358,6 +358,41 @@ test("compile は merge を n8n merge ノードとしてコンパイルする", 
   expect(result.workflow.nodes[1]?.parameters).toEqual({ mode: "append" });
 });
 
+test("compile は removeDuplicates を n8n removeduplicates ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "remove-duplicates-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.removeDuplicates({ fieldsToCompare: "selectedFields", fields: "email" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "remove-duplicates.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "removeDuplicates_2",
+  ]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.removeduplicates");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    fieldsToCompare: "selectedFields",
+    fields: "email",
+  });
+});
+
 test("compile は aggregate を n8n aggregate ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

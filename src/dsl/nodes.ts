@@ -56,6 +56,10 @@ export const n = {
     return createNodeRef("merge", params);
   },
 
+  removeDuplicates(params: NodeParams): NodeRef<"removeDuplicates"> {
+    return createNodeRef("removeDuplicates", params);
+  },
+
   respondToWebhook(params: NodeParams): NodeRef<"respondToWebhook"> {
     return createNodeRef("respondToWebhook", params);
   },

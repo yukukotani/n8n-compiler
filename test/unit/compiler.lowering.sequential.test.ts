@@ -234,6 +234,37 @@ test("lowerControlFlowGraphToIR は merge を n8n merge ノードに lowering �
   ]);
 });
 
+test("lowerControlFlowGraphToIR は removeDuplicates を n8n removeduplicates ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.removeDuplicates({ fieldsToCompare: "selectedFields", fields: "email" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "removeDuplicates_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "removeDuplicates_2",
+      n8nType: "n8n-nodes-base.removeduplicates",
+      parameters: { fieldsToCompare: "selectedFields", fields: "email" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "removeDuplicates_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は aggregate を n8n aggregate ノードに lowering する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
