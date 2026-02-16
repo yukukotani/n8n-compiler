@@ -3,6 +3,7 @@ import {
   n,
   workflow,
   type LoopOptions,
+  type ScheduleTriggerParams,
   type WorkflowDefinition,
 } from "../../src/dsl";
 
@@ -58,4 +59,46 @@ test("NodeRef は前ノード結果のプロパティアクセスを型エラー
   }) satisfies WorkflowDefinition;
 
   expect(definition.name).toBe("node-ref-access");
+});
+
+test("ScheduleTriggerParams で型付きスケジュールトリガーを定義できる", () => {
+  // minutes interval
+  const minutesParams: ScheduleTriggerParams = {
+    rule: { interval: [{ field: "minutes", minutesInterval: 5 }] },
+  };
+  const minutesTrigger = n.scheduleTrigger(minutesParams);
+  expect(minutesTrigger.__brand).toBe("NodeRef");
+  expect(minutesTrigger.kind).toBe("scheduleTrigger");
+  expect(minutesTrigger.params).toEqual(minutesParams);
+
+  // weeks interval
+  const weeksParams: ScheduleTriggerParams = {
+    rule: {
+      interval: [
+        {
+          field: "weeks",
+          weeksInterval: 1,
+          triggerOnWeekdays: ["monday"],
+          triggerAtHour: 9,
+          triggerAtMinute: 0,
+        },
+      ],
+    },
+  };
+
+  // cronExpression interval
+  const cronParams: ScheduleTriggerParams = {
+    rule: { interval: [{ field: "cronExpression", expression: "*/5 * * * *" }] },
+  };
+
+  // workflow definition with scheduleTrigger
+  const definition = workflow({
+    name: "scheduled-workflow",
+    triggers: [n.scheduleTrigger(cronParams)],
+    execute() {
+      n.noOp();
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("scheduled-workflow");
 });

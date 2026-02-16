@@ -80,6 +80,24 @@ test("validateWorkflow は必須項目が欠けた schema を E_INVALID_WORKFLOW
   );
 });
 
+test("validateWorkflow は scheduleTrigger のみの workflow を受理する", () => {
+  const workflow = createValidWorkflow();
+  // manualTrigger を scheduleTrigger に差し替え
+  workflow.nodes = workflow.nodes.map((node) =>
+    node.n8nType === "n8n-nodes-base.manualTrigger"
+      ? { ...node, key: "scheduleTrigger_1", n8nType: "n8n-nodes-base.scheduleTrigger" }
+      : node,
+  );
+  workflow.edges = workflow.edges.map((edge) => ({
+    ...edge,
+    from: edge.from === "manualTrigger_1" ? "scheduleTrigger_1" : edge.from,
+    to: edge.to === "manualTrigger_1" ? "scheduleTrigger_1" : edge.to,
+  }));
+
+  const result = validateWorkflow("workflow.ts", workflow);
+  expect(result.diagnostics).toEqual([]);
+});
+
 test("validateWorkflow は trigger 不在を E_INVALID_WORKFLOW_SCHEMA で返す", () => {
   const workflow = createValidWorkflow();
   workflow.nodes = workflow.nodes.filter((node) => node.n8nType !== "n8n-nodes-base.manualTrigger");

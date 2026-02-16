@@ -4,7 +4,54 @@ export type WorkflowSettings = JsonObject;
 
 export type WorkflowExecute = () => void | Promise<void>;
 
-export type TriggerNodeKind = "manualTrigger";
+export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger";
+
+// --- Schedule Trigger params ---
+
+export type ScheduleTriggerInterval =
+  | {
+      field: "seconds";
+      secondsInterval: number;
+    }
+  | {
+      field: "minutes";
+      minutesInterval: number;
+    }
+  | {
+      field: "hours";
+      hoursInterval: number;
+      triggerAtMinute?: number;
+    }
+  | {
+      field: "days";
+      daysInterval: number;
+      triggerAtHour?: number;
+      triggerAtMinute?: number;
+    }
+  | {
+      field: "weeks";
+      weeksInterval: number;
+      triggerOnWeekdays?: string[];
+      triggerAtHour?: number;
+      triggerAtMinute?: number;
+    }
+  | {
+      field: "months";
+      monthsInterval: number;
+      triggerAtDayOfMonth?: number;
+      triggerAtHour?: number;
+      triggerAtMinute?: number;
+    }
+  | {
+      field: "cronExpression";
+      expression: string;
+    };
+
+export type ScheduleTriggerParams = {
+  rule: {
+    interval: ScheduleTriggerInterval[];
+  };
+};
 
 export type WorkflowDefinition = {
   name: string;
@@ -15,7 +62,7 @@ export type WorkflowDefinition = {
 
 export type NodeParams = JsonObject;
 
-export type NodeKind = "manualTrigger" | "httpRequest" | "set" | "noOp";
+export type NodeKind = "manualTrigger" | "scheduleTrigger" | "httpRequest" | "set" | "noOp";
 
 export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;
 

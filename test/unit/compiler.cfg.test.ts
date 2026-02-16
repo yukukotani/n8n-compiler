@@ -294,6 +294,45 @@ test("buildControlFlowGraph は非対応構文を diagnostics に変換する", 
   );
 });
 
+test("buildControlFlowGraph は execute 内の scheduleTrigger 呼び出しをエラーにする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.scheduleTrigger({ rule: { interval: [{ field: "minutes", minutesInterval: 5 }] } });
+        n.set({ value: "ok" });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("trigger-in-execute.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("trigger-in-execute.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("trigger-in-execute.ts", entryResult.entry.execute);
+
+  expect(cfgResult.cfg).toBeNull();
+  expect(cfgResult.diagnostics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: expect.stringContaining("trigger node"),
+      }),
+    ]),
+  );
+});
+
 test("buildControlFlowGraph は execute 内の trigger 呼び出しをエラーにする", () => {
   const sourceText = `
     export default workflow({

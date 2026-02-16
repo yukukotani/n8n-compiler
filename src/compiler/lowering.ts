@@ -38,12 +38,17 @@ type LoweringContext = {
 
 const NODE_TYPE_BY_KIND = {
   manualTrigger: "n8n-nodes-base.manualTrigger",
+  scheduleTrigger: "n8n-nodes-base.scheduleTrigger",
   httpRequest: "n8n-nodes-base.httpRequest",
   set: "n8n-nodes-base.set",
   noOp: "n8n-nodes-base.noOp",
   if: "n8n-nodes-base.if",
   splitInBatches: "n8n-nodes-base.splitInBatches",
 } as const;
+
+const DEFAULT_TYPE_VERSION: Partial<Record<string, number>> = {
+  scheduleTrigger: 1.2,
+};
 
 export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput): WorkflowIR {
   const context: LoweringContext = {
@@ -68,6 +73,7 @@ function appendTriggers(triggers: TriggerInput[], context: LoweringContext): voi
     const node = createNodeIR({
       kind: trigger.kind,
       n8nType,
+      typeVersion: DEFAULT_TYPE_VERSION[trigger.kind],
       counter: context.counter,
       parameters: trigger.parameters,
     });

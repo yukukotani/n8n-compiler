@@ -17,7 +17,10 @@ type WorkflowShape = {
   edges: unknown;
 };
 
-const TRIGGER_NODE_TYPES = new Set<string>(["n8n-nodes-base.manualTrigger"]);
+const TRIGGER_NODE_TYPES = new Set<string>([
+  "n8n-nodes-base.manualTrigger",
+  "n8n-nodes-base.scheduleTrigger",
+]);
 
 export function validateWorkflow(file: string, workflow: WorkflowIR): ValidateWorkflowResult {
   const context: ValidationContext = {

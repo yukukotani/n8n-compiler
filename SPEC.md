@@ -144,6 +144,7 @@ export declare function workflow(def: WorkflowDefinition): WorkflowDefinition;
 export declare const n: {
   // Trigger nodes (used in `triggers` array, NOT inside `execute`)
   manualTrigger(params?: Record<string, unknown>): NodeRef;
+  scheduleTrigger(params: ScheduleTriggerParams): NodeRef;
 
   // Action nodes (used inside `execute`)
   httpRequest(params: Record<string, unknown>): NodeRef;
@@ -245,6 +246,7 @@ This matches n8n loop wiring semantics (`done`, `loop`).
 Initial built-in mapping:
 
 - `n.manualTrigger()` -> `n8n-nodes-base.manualTrigger`
+- `n.scheduleTrigger(params)` -> `n8n-nodes-base.scheduleTrigger`
 - `n.httpRequest(params)` -> `n8n-nodes-base.httpRequest`
 - `n.set(params)` -> `n8n-nodes-base.set`
 - `n.noOp()` -> `n8n-nodes-base.noOp`

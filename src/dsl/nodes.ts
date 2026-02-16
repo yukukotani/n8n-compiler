@@ -7,6 +7,7 @@ import type {
   NodeKind,
   NodeParams,
   NodeRef,
+  ScheduleTriggerParams,
 } from "./types";
 
 const LOOP_SOURCE: LoopToken[] = [];
@@ -25,6 +26,10 @@ function createNodeRef<Kind extends NodeKind, Params extends NodeParams>(
 export const n = {
   manualTrigger(params: NodeParams = {}): NodeRef<"manualTrigger"> {
     return createNodeRef("manualTrigger", params);
+  },
+
+  scheduleTrigger(params: ScheduleTriggerParams): NodeRef<"scheduleTrigger", ScheduleTriggerParams> {
+    return createNodeRef("scheduleTrigger", params);
   },
 
   httpRequest(params: NodeParams): NodeRef<"httpRequest"> {

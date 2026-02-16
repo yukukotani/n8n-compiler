@@ -164,6 +164,19 @@ describe("transformParameters", () => {
     });
   });
 
+  describe("scheduleTrigger", () => {
+    test("rule パラメータをそのまま通す", () => {
+      const params = {
+        rule: {
+          interval: [{ field: "minutes", minutesInterval: 5 }],
+        },
+      };
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, params);
+
+      expect(result).toEqual(params);
+    });
+  });
+
   describe("noOp", () => {
     test("空パラメータはそのまま通す", () => {
       const result = transformParameters("n8n-nodes-base.noOp", 1, {});

@@ -111,6 +111,88 @@ test("compile は前ノード変数参照を n8n 式に変換して workflow JSO
   });
 });
 
+test("compile は scheduleTrigger を含む workflow を正しくコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "scheduled",
+      settings: {},
+      triggers: [n.scheduleTrigger({ rule: { interval: [{ field: "minutes", minutesInterval: 5 }] } })],
+      execute() {
+        n.set({ value: "ok" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "scheduled.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.name).toBe("scheduled");
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "scheduleTrigger_1",
+    "set_2",
+  ]);
+
+  const triggerNode = result.workflow.nodes[0];
+  expect(triggerNode?.type).toBe("n8n-nodes-base.scheduleTrigger");
+  expect(triggerNode?.typeVersion).toBe(1.2);
+  expect(triggerNode?.parameters).toEqual({
+    rule: { interval: [{ field: "minutes", minutesInterval: 5 }] },
+  });
+
+  expect(result.workflow.connections).toEqual({
+    scheduleTrigger_1: {
+      main: [[{ node: "set_2", type: "main", index: 0 }]],
+    },
+  });
+});
+
+test("compile は manualTrigger と scheduleTrigger を併用できる", () => {
+  const sourceText = `
+    export default workflow({
+      name: "dual-trigger",
+      settings: {},
+      triggers: [
+        n.manualTrigger(),
+        n.scheduleTrigger({ rule: { interval: [{ field: "hours", hoursInterval: 1 }] } }),
+      ],
+      execute() {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "dual.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "scheduleTrigger_2",
+    "noOp_3",
+  ]);
+
+  expect(result.workflow.nodes[0]?.type).toBe("n8n-nodes-base.manualTrigger");
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.scheduleTrigger");
+  expect(result.workflow.nodes[1]?.typeVersion).toBe(1.2);
+});
+
 test("compile は validate diagnostics を集約して workflow を返さない", () => {
   const sourceText = `
     export default workflow({
