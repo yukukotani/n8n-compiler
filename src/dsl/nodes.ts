@@ -52,6 +52,10 @@ export const n = {
     return createNodeRef("respondToWebhook", params);
   },
 
+  splitOut(params: NodeParams): NodeRef<"splitOut"> {
+    return createNodeRef("splitOut", params);
+  },
+
   switch(params: NodeParams): NodeRef<"switch"> {
     return createNodeRef("switch", params);
   },

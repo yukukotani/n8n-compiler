@@ -21,6 +21,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "filter",
   "merge",
   "respondToWebhook",
+  "splitOut",
   "switch",
   "set",
   "wait",

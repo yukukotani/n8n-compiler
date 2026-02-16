@@ -68,6 +68,7 @@ export type NodeKind =
   | "filter"
   | "merge"
   | "respondToWebhook"
+  | "splitOut"
   | "switch"
   | "set"
   | "wait"

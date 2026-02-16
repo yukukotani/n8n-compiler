@@ -269,6 +269,35 @@ test("compile は respondToWebhook を n8n respondToWebhook ノードとして�
   });
 });
 
+test("compile は splitOut を n8n splitout ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "split-out-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.splitOut({ fieldToSplitOut: "items" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "split-out.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "splitOut_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.splitout");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({ fieldToSplitOut: "items" });
+});
+
 test("compile は merge を n8n merge ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

@@ -150,6 +150,24 @@ test("respondToWebhook を ActionNode として定義できる", () => {
   expect(definition.name).toBe("respond-to-webhook-workflow");
 });
 
+test("splitOut を ActionNode として定義できる", () => {
+  const node = n.splitOut({ fieldToSplitOut: "items" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("splitOut");
+  expect(node.params).toEqual({ fieldToSplitOut: "items" });
+
+  const definition = workflow({
+    name: "split-out-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.splitOut({ fieldToSplitOut: "items" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("split-out-workflow");
+});
+
 test("switch を ActionNode として定義できる", () => {
   const node = n.switch({ expression: "={{$json.kind}}", cases: [{ value: "ok" }] });
 

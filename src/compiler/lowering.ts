@@ -45,6 +45,7 @@ const NODE_TYPE_BY_KIND = {
   filter: "n8n-nodes-base.filter",
   merge: "n8n-nodes-base.merge",
   respondToWebhook: "n8n-nodes-base.respondToWebhook",
+  splitOut: "n8n-nodes-base.splitout",
   switch: "n8n-nodes-base.switch",
   set: "n8n-nodes-base.set",
   wait: "n8n-nodes-base.wait",
