@@ -32,11 +32,17 @@ const TRANSFORMERS: Record<string, ParamTransformer> = {
 
 /**
  * HttpRequest v1 uses `requestMethod` instead of `method`.
+ * v4+ uses `method` directly, so no transform is needed.
  *
  * DSL:  { method: "GET", url: "https://..." }
- * n8n:  { requestMethod: "GET", url: "https://..." }
+ * n8n v1:  { requestMethod: "GET", url: "https://..." }
+ * n8n v4+: { method: "GET", url: "https://..." }
  */
-function transformHttpRequest(_typeVersion: number, params: JsonObject): JsonObject {
+function transformHttpRequest(typeVersion: number, params: JsonObject): JsonObject {
+  if (typeVersion >= 4) {
+    return params;
+  }
+
   const result = { ...params };
 
   if ("method" in result) {

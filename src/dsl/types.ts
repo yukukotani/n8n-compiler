@@ -6,7 +6,7 @@ export type WorkflowExecute = () => void | Promise<void>;
 
 export type ExpressionValue = `={{${string}}}`;
 
-export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger" | "webhookTrigger";
+export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger" | "webhookTrigger" | "googleCalendarTrigger";
 
 // --- Schedule Trigger params ---
 
@@ -69,8 +69,16 @@ export type HttpRequestParams = {
   method?: HttpMethod;
   url?: string;
   authentication?: "none" | "predefinedCredentialType" | "genericCredentialType" | string;
+  nodeCredentialType?: string;
+  sendBody?: boolean;
+  specifyBody?: "json" | "string" | "raw";
+  jsonBody?: string | ExpressionValue;
   options?: JsonObject;
 };
+
+export type GoogleCalendarTriggerParams = JsonObject;
+
+export type GoogleCalendarParams = JsonObject;
 
 export type ExecuteWorkflowParams = {
   workflowId: string;
@@ -218,6 +226,7 @@ export type NodeKind =
   | "manualTrigger"
   | "scheduleTrigger"
   | "webhookTrigger"
+  | "googleCalendarTrigger"
   | "httpRequest"
   | "executeWorkflow"
   | "code"
@@ -233,7 +242,8 @@ export type NodeKind =
   | "summarize"
   | "set"
   | "wait"
-  | "noOp";
+  | "noOp"
+  | "googleCalendar";
 
 export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;
 
@@ -241,6 +251,7 @@ export type NodeParamsByKind = {
   manualTrigger: ManualTriggerParams;
   scheduleTrigger: ScheduleTriggerParams;
   webhookTrigger: WebhookTriggerParams;
+  googleCalendarTrigger: GoogleCalendarTriggerParams;
   httpRequest: HttpRequestParams;
   executeWorkflow: ExecuteWorkflowParams;
   code: CodeParams;
@@ -257,6 +268,7 @@ export type NodeParamsByKind = {
   set: SetParams;
   wait: WaitParams;
   noOp: NoOpParams;
+  googleCalendar: GoogleCalendarParams;
 };
 
 export type NodeParamsOf<Kind extends NodeKind> = NodeParamsByKind[Kind];
@@ -308,3 +320,9 @@ export type LoopToken = {
 };
 
 export type LoopIterable = Iterable<LoopToken>;
+
+export type NodeOptions = {
+  credentials?: Record<string, { id: string; name?: string }>;
+  name?: string;
+  position?: [number, number];
+};

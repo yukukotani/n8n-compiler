@@ -49,7 +49,8 @@ MVP サポートは次の通りです。
 - スケジュール例: `triggers: [n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] })]`
 - Webhook 例: `triggers: [n.webhookTrigger({ path: "incoming", httpMethod: "POST" })]`
 - 複数指定可: `triggers: [n.manualTrigger(), n.scheduleTrigger({ schedules: [{ type: "hours", intervalHours: 1 }] })]`
-- 現在サポートされる trigger は `manualTrigger / scheduleTrigger / webhookTrigger`
+- Google Calendar 例: `triggers: [n.googleCalendarTrigger({ calendarId: "...", triggerOn: "eventCreated" })]`
+- 現在サポートされる trigger は `manualTrigger / scheduleTrigger / webhookTrigger / googleCalendarTrigger`
 - `scheduleTrigger` の `schedules` は `type` による判別共用体で、`type` に応じたパラメータを指定します:
   - `seconds`: `intervalSeconds`
   - `minutes`: `intervalMinutes`
@@ -58,7 +59,10 @@ MVP サポートは次の通りです。
   - `weeks`: `intervalWeeks`, `onWeekdays?`, `atHour?`, `atMinute?`
   - `months`: `intervalMonths`, `atDayOfMonth?`, `atHour?`, `atMinute?`
   - `cron`: `expression`
-- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`）は `execute` 内に書くとエラーになります
+- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`, `n.googleCalendarTrigger(...)`）は `execute` 内に書くとエラーになります
+- トリガー・ノード共に第 2 引数でオプション（`credentials`, `name`, `position`）を指定可能:
+  - 例: `n.httpRequest({ method: "GET", url: "..." }, { name: "my req", credentials: { httpBasicAuth: { id: "cred-1" } } })`
+  - 例: `n.googleCalendarTrigger({ calendarId: "..." }, { credentials: { googleCalendarOAuth2Api: { id: "..." } } })`
 
 ### execute 内のサポート構文
 
@@ -80,7 +84,9 @@ MVP サポートは次の通りです。
   - `n.switch(...)`（ノードとして直接呼ぶ場合）
   - `n.set(...)`
   - `n.noOp(...)`
+  - `n.googleCalendar(...)`
 - 変数代入つきノード呼び出し: `const req = n.httpRequest(...)`
+- 並列実行（fan-out）: `n.parallel(() => { ... }, () => { ... }, ...)`
 - 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
 - `switch` 構文: `switch (expr) { case ...: ...; break; default: ... }`
@@ -89,9 +95,9 @@ MVP サポートは次の通りです。
 ### 非サポート/制約
 
 - `execute` はブロックボディを持つ関数式/アロー関数である必要がある
-- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`）を `execute` 内で使うことは非対応（`triggers` に指定）
+- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`, `n.googleCalendarTrigger(...)`）を `execute` 内で使うことは非対応（`triggers` に指定）
 - 未知の DSL 呼び出し（例: `n.unknownNode(...)`）は非対応
-- `n.expr(...)` と `n.loop(...)` を単独ノード呼び出しとして使うことは非対応
+- `n.expr(...)`, `n.loop(...)`, `n.parallel(...)` を単独ノード呼び出しとして使うことは非対応（`n.parallel(...)` は変数代入にも非対応）
 - `if` 条件は boolean リテラル、`n.expr(...)`、または前ノード参照を使う式（例: `check.ok`, `check.ok == true`, `!check.ok`, `check.count > 0`, `check.ok && check.ready`）に対応
 - `switch` 条件式はシリアライズ可能な式のみ対応、`case` は literal（`string/number/boolean/null`）のみ対応
 - `switch` の fallthrough は非対応（`break` が必要）

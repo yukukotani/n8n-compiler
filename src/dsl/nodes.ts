@@ -5,6 +5,7 @@ import type {
   LoopOptions,
   LoopToken,
   NodeKind,
+  NodeOptions,
   NodeParamsOf,
   NodeRef,
 } from "./types";
@@ -23,80 +24,92 @@ function createNodeRef<Kind extends NodeKind, Params extends NodeParamsOf<Kind>>
 }
 
 export const n = {
-  manualTrigger(params: NodeParamsOf<"manualTrigger"> = {}): NodeRef<"manualTrigger"> {
+  manualTrigger(params: NodeParamsOf<"manualTrigger"> = {}, _options?: NodeOptions): NodeRef<"manualTrigger"> {
     return createNodeRef("manualTrigger", params);
   },
 
-  scheduleTrigger(params: NodeParamsOf<"scheduleTrigger">): NodeRef<"scheduleTrigger"> {
+  scheduleTrigger(params: NodeParamsOf<"scheduleTrigger">, _options?: NodeOptions): NodeRef<"scheduleTrigger"> {
     return createNodeRef("scheduleTrigger", params);
   },
 
-  webhookTrigger(params: NodeParamsOf<"webhookTrigger"> = {}): NodeRef<"webhookTrigger"> {
+  webhookTrigger(params: NodeParamsOf<"webhookTrigger"> = {}, _options?: NodeOptions): NodeRef<"webhookTrigger"> {
     return createNodeRef("webhookTrigger", params);
   },
 
-  httpRequest(params: NodeParamsOf<"httpRequest">): NodeRef<"httpRequest"> {
+  googleCalendarTrigger(params: NodeParamsOf<"googleCalendarTrigger"> = {}, _options?: NodeOptions): NodeRef<"googleCalendarTrigger"> {
+    return createNodeRef("googleCalendarTrigger", params);
+  },
+
+  httpRequest(params: NodeParamsOf<"httpRequest">, _options?: NodeOptions): NodeRef<"httpRequest"> {
     return createNodeRef("httpRequest", params);
   },
 
-  executeWorkflow(params: NodeParamsOf<"executeWorkflow">): NodeRef<"executeWorkflow"> {
+  executeWorkflow(params: NodeParamsOf<"executeWorkflow">, _options?: NodeOptions): NodeRef<"executeWorkflow"> {
     return createNodeRef("executeWorkflow", params);
   },
 
-  code(params: NodeParamsOf<"code">): NodeRef<"code"> {
+  code(params: NodeParamsOf<"code">, _options?: NodeOptions): NodeRef<"code"> {
     return createNodeRef("code", params);
   },
 
-  aggregate(params: NodeParamsOf<"aggregate">): NodeRef<"aggregate"> {
+  aggregate(params: NodeParamsOf<"aggregate">, _options?: NodeOptions): NodeRef<"aggregate"> {
     return createNodeRef("aggregate", params);
   },
 
-  filter(params: NodeParamsOf<"filter">): NodeRef<"filter"> {
+  filter(params: NodeParamsOf<"filter">, _options?: NodeOptions): NodeRef<"filter"> {
     return createNodeRef("filter", params);
   },
 
-  limit(params: NodeParamsOf<"limit">): NodeRef<"limit"> {
+  limit(params: NodeParamsOf<"limit">, _options?: NodeOptions): NodeRef<"limit"> {
     return createNodeRef("limit", params);
   },
 
-  merge(params: NodeParamsOf<"merge">): NodeRef<"merge"> {
+  merge(params: NodeParamsOf<"merge">, _options?: NodeOptions): NodeRef<"merge"> {
     return createNodeRef("merge", params);
   },
 
-  removeDuplicates(params: NodeParamsOf<"removeDuplicates">): NodeRef<"removeDuplicates"> {
+  removeDuplicates(params: NodeParamsOf<"removeDuplicates">, _options?: NodeOptions): NodeRef<"removeDuplicates"> {
     return createNodeRef("removeDuplicates", params);
   },
 
-  respondToWebhook(params: NodeParamsOf<"respondToWebhook">): NodeRef<"respondToWebhook"> {
+  respondToWebhook(params: NodeParamsOf<"respondToWebhook">, _options?: NodeOptions): NodeRef<"respondToWebhook"> {
     return createNodeRef("respondToWebhook", params);
   },
 
-  sort(params: NodeParamsOf<"sort">): NodeRef<"sort"> {
+  sort(params: NodeParamsOf<"sort">, _options?: NodeOptions): NodeRef<"sort"> {
     return createNodeRef("sort", params);
   },
 
-  splitOut(params: NodeParamsOf<"splitOut">): NodeRef<"splitOut"> {
+  splitOut(params: NodeParamsOf<"splitOut">, _options?: NodeOptions): NodeRef<"splitOut"> {
     return createNodeRef("splitOut", params);
   },
 
-  switch(params: NodeParamsOf<"switch">): NodeRef<"switch"> {
+  switch(params: NodeParamsOf<"switch">, _options?: NodeOptions): NodeRef<"switch"> {
     return createNodeRef("switch", params);
   },
 
-  summarize(params: NodeParamsOf<"summarize">): NodeRef<"summarize"> {
+  summarize(params: NodeParamsOf<"summarize">, _options?: NodeOptions): NodeRef<"summarize"> {
     return createNodeRef("summarize", params);
   },
 
-  set(params: NodeParamsOf<"set">): NodeRef<"set"> {
+  set(params: NodeParamsOf<"set">, _options?: NodeOptions): NodeRef<"set"> {
     return createNodeRef("set", params);
   },
 
-  wait(params: NodeParamsOf<"wait">): NodeRef<"wait"> {
+  wait(params: NodeParamsOf<"wait">, _options?: NodeOptions): NodeRef<"wait"> {
     return createNodeRef("wait", params);
   },
 
-  noOp(params: NodeParamsOf<"noOp"> = {}): NodeRef<"noOp"> {
+  noOp(params: NodeParamsOf<"noOp"> = {}, _options?: NodeOptions): NodeRef<"noOp"> {
     return createNodeRef("noOp", params);
+  },
+
+  googleCalendar(params: NodeParamsOf<"googleCalendar">, _options?: NodeOptions): NodeRef<"googleCalendar"> {
+    return createNodeRef("googleCalendar", params);
+  },
+
+  parallel(..._branches: Array<() => void>): void {
+    // no-op at runtime; the compiler handles this statically
   },
 
   expr<Value extends ExpressionValue>(value: Value): ConditionRef<Value> {

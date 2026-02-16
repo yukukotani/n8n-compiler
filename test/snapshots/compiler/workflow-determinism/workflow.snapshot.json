@@ -158,7 +158,7 @@
     {
       "name": "httpRequest_6",
       "parameters": {
-        "requestMethod": "GET",
+        "method": "GET",
         "url": "https://example.com"
       },
       "position": [
@@ -166,7 +166,7 @@
         0
       ],
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1
+      "typeVersion": 4.2
     },
     {
       "name": "set_7",

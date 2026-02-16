@@ -357,4 +357,34 @@ describe("transformParameters", () => {
       });
     });
   });
+
+  describe("httpRequest v4+", () => {
+    test("method をそのまま保持する（v4 以上は requestMethod へのリネーム不要）", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        method: "POST",
+        url: "https://example.com/api",
+        authentication: "predefinedCredentialType",
+        sendBody: true,
+      });
+
+      expect(result).toEqual({
+        method: "POST",
+        url: "https://example.com/api",
+        authentication: "predefinedCredentialType",
+        sendBody: true,
+      });
+    });
+
+    test("v4.0 でも method をそのまま保持する", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4, {
+        method: "GET",
+        url: "https://example.com",
+      });
+
+      expect(result).toEqual({
+        method: "GET",
+        url: "https://example.com",
+      });
+    });
+  });
 });

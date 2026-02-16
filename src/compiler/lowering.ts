@@ -4,6 +4,7 @@ import type {
   CfgForOfStatement,
   CfgIfStatement,
   CfgIfTest,
+  CfgParallelStatement,
   CfgSwitchStatement,
   CfgStatement,
 } from "./cfg";
@@ -18,6 +19,9 @@ import {
 export type TriggerInput = {
   kind: string;
   parameters: Record<string, unknown>;
+  credentials?: Record<string, { id: string; name?: string }>;
+  name?: string;
+  position?: [number, number];
 };
 
 type LowerControlFlowGraphToIRInput = {
@@ -41,6 +45,7 @@ const NODE_TYPE_BY_KIND = {
   manualTrigger: "n8n-nodes-base.manualTrigger",
   scheduleTrigger: "n8n-nodes-base.scheduleTrigger",
   webhookTrigger: "n8n-nodes-base.webhook",
+  googleCalendarTrigger: "n8n-nodes-base.googleCalendarTrigger",
   httpRequest: "n8n-nodes-base.httpRequest",
   executeWorkflow: "n8n-nodes-base.executeworkflow",
   code: "n8n-nodes-base.code",
@@ -57,12 +62,15 @@ const NODE_TYPE_BY_KIND = {
   set: "n8n-nodes-base.set",
   wait: "n8n-nodes-base.wait",
   noOp: "n8n-nodes-base.noOp",
+  googleCalendar: "n8n-nodes-base.googleCalendar",
   if: "n8n-nodes-base.if",
   splitInBatches: "n8n-nodes-base.splitInBatches",
 } as const;
 
 const DEFAULT_TYPE_VERSION: Partial<Record<string, number>> = {
   scheduleTrigger: 1.2,
+  httpRequest: 4.2,
+  googleCalendar: 1.3,
 };
 
 export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput): WorkflowIR {
@@ -91,6 +99,9 @@ function appendTriggers(triggers: TriggerInput[], context: LoweringContext): voi
       typeVersion: DEFAULT_TYPE_VERSION[trigger.kind],
       counter: context.counter,
       parameters: trigger.parameters,
+      credentials: trigger.credentials,
+      position: trigger.position,
+      displayName: trigger.name,
     });
 
     context.workflow.nodes.push(node);
@@ -123,6 +134,9 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
       return;
     case "ForOf":
       lowerForOfStatement(statement, context);
+      return;
+    case "Parallel":
+      lowerParallelStatement(statement, context);
       return;
     default:
       return assertNever(statement);
@@ -184,6 +198,15 @@ function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringCo
   context.frontier = mergeFrontiers(...caseFrontiers, defaultFrontier);
 }
 
+function lowerParallelStatement(statement: CfgParallelStatement, context: LoweringContext): void {
+  const savedFrontier = context.frontier;
+  const branchFrontiers = statement.branches.map((branch) => {
+    return lowerBranchWithFrontier(branch, savedFrontier, context);
+  });
+
+  context.frontier = mergeFrontiers(...branchFrontiers);
+}
+
 function appendNode(
   call: CfgDslNodeCall,
   context: LoweringContext,
@@ -193,9 +216,13 @@ function appendNode(
   const node = createNodeIR({
     kind: call.kind,
     n8nType: NODE_TYPE_BY_KIND[call.kind],
+    typeVersion: DEFAULT_TYPE_VERSION[call.kind],
     counter: context.counter,
     variableName,
     parameters: call.parameters,
+    credentials: call.options?.credentials,
+    position: call.options?.position,
+    displayName: call.options?.name,
   });
 
   context.workflow.nodes.push(node);

@@ -108,13 +108,20 @@ export function compile(input: CompileInput): CompileResult {
 
   const positions = computeLayout(workflowIR.nodes, workflowIR.edges);
   const positionMap = new Map(positions.map((p) => [p.nodeKey, p]));
+  const nameMap = new Map(workflowIR.nodes.map((n) => [n.key, n.displayName ?? n.key]));
+
+  const remappedEdges = workflowIR.edges.map((edge) => ({
+    ...edge,
+    from: nameMap.get(edge.from) ?? edge.from,
+    to: nameMap.get(edge.to) ?? edge.to,
+  }));
 
   return {
     workflow: {
       name: workflowIR.name,
       settings: workflowIR.settings as JsonObject,
       nodes: workflowIR.nodes.map((node) => toN8nNode(node, positionMap)),
-      connections: buildN8nConnections(workflowIR.edges),
+      connections: buildN8nConnections(remappedEdges),
     },
     diagnostics,
   };
@@ -189,7 +196,7 @@ function toN8nNode(node: NodeIR, positionMap: Map<string, NodePosition>): N8nNod
     : (node.position ?? [0, 0]);
 
   const n8nNode: N8nNode = {
-    name: node.key,
+    name: node.displayName ?? node.key,
     type: node.n8nType,
     typeVersion: node.typeVersion,
     position,
@@ -333,9 +340,37 @@ function parseTriggers(
       }
     }
 
+    const secondArg = element.arguments[1];
+    let credentials: Record<string, { id: string; name?: string }> | undefined;
+    let triggerDisplayName: string | undefined;
+    let triggerPosition: [number, number] | undefined;
+    if (secondArg && secondArg.type !== "SpreadElement" && secondArg.type === "ObjectExpression") {
+      const parsed = parseExpressionAsJson(secondArg, new Set());
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const opts = parsed as Record<string, unknown>;
+        if (opts.credentials && typeof opts.credentials === "object" && !Array.isArray(opts.credentials)) {
+          credentials = opts.credentials as Record<string, { id: string; name?: string }>;
+        }
+        if (typeof opts.name === "string") {
+          triggerDisplayName = opts.name;
+        }
+        if (
+          Array.isArray(opts.position) &&
+          opts.position.length === 2 &&
+          typeof opts.position[0] === "number" &&
+          typeof opts.position[1] === "number"
+        ) {
+          triggerPosition = opts.position as [number, number];
+        }
+      }
+    }
+
     triggers.push({
       kind: triggerName,
       parameters,
+      ...(credentials && { credentials }),
+      ...(triggerDisplayName && { name: triggerDisplayName }),
+      ...(triggerPosition && { position: triggerPosition }),
     });
   }
 

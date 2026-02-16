@@ -33,6 +33,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "set",
   "wait",
   "noOp",
+  "googleCalendar",
 ];
 
 const SUPPORTED_NODE_CALL_SET = new Set<string>(SUPPORTED_NODE_CALLS);
@@ -48,7 +49,8 @@ export type CfgStatement =
   | CfgVariableStatement
   | CfgIfStatement
   | CfgSwitchStatement
-  | CfgForOfStatement;
+  | CfgForOfStatement
+  | CfgParallelStatement;
 
 export type CfgNodeCallStatement = {
   type: "NodeCall";
@@ -90,9 +92,21 @@ export type CfgSwitchCase = {
   consequent: CfgStatement[];
 };
 
+export type CfgParallelStatement = {
+  type: "Parallel";
+  branches: CfgStatement[][];
+};
+
+export type CfgNodeCallOptions = {
+  credentials?: Record<string, { id: string; name?: string }>;
+  name?: string;
+  position?: [number, number];
+};
+
 export type CfgDslNodeCall = {
   kind: NodeKind;
   parameters: JsonObject;
+  options?: CfgNodeCallOptions;
 };
 
 export type CfgIfTest =
@@ -248,6 +262,11 @@ function buildBlockStatement(statements: Statement[], context: BuildContext): Cf
 function buildExpressionStatement(statement: Statement, context: BuildContext): CfgStatement[] {
   if (statement.type !== "ExpressionStatement") {
     return [];
+  }
+
+  const parallelResult = tryBuildParallel(statement.expression, context);
+  if (parallelResult) {
+    return parallelResult;
   }
 
   const nodeCall = toNodeCall(statement.expression, context, {
@@ -738,7 +757,7 @@ function toNodeCall(
   }
 
   if (!SUPPORTED_NODE_CALL_SET.has(call.name)) {
-    if (call.name === "expr" || call.name === "loop") {
+    if (call.name === "expr" || call.name === "loop" || call.name === "parallel") {
       pushDiagnostic(context, {
         code: "E_UNSUPPORTED_STATEMENT",
         message: `n.${call.name}(...) is not a standalone node call`,
@@ -768,10 +787,12 @@ function toNodeCall(
   }
 
   const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables);
+  const options = parseNodeCallOptions(call.arguments);
 
   return {
     kind: call.name as NodeKind,
     parameters,
+    ...(options && { options }),
   };
 }
 
@@ -826,6 +847,122 @@ function pickExpressionArgument(argument: Argument | undefined): Expression | nu
   }
 
   return argument;
+}
+
+function tryBuildParallel(expression: Expression, context: BuildContext): CfgStatement[] | null {
+  const call = readDslCall(expression);
+  if (!call || call.name !== "parallel") {
+    return null;
+  }
+
+  if (call.arguments.length === 0) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.parallel() requires at least one branch",
+      start: call.start,
+      end: call.end,
+    });
+    return [];
+  }
+
+  const branches: CfgStatement[][] = [];
+
+  for (const arg of call.arguments) {
+    if (arg.type === "SpreadElement") {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: "n.parallel() does not support spread arguments",
+        start: arg.start,
+        end: arg.end,
+      });
+      return [];
+    }
+
+    if (arg.type !== "ArrowFunctionExpression" && arg.type !== "FunctionExpression") {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: "n.parallel() arguments must be arrow functions or function expressions",
+        start: arg.start,
+        end: arg.end,
+      });
+      return [];
+    }
+
+    const body = pickParallelBranchBody(arg, context);
+    branches.push(buildStatements(body, context));
+  }
+
+  return [
+    {
+      type: "Parallel",
+      branches,
+    },
+  ];
+}
+
+function pickParallelBranchBody(
+  fn: ArrowFunctionExpression | Expression,
+  context: BuildContext,
+): Statement[] {
+  if (fn.type === "ArrowFunctionExpression") {
+    if (fn.body.type === "BlockStatement") {
+      return pickFunctionBodyStatements(fn.body);
+    }
+
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.parallel() branch must use a block body",
+      start: fn.body.start,
+      end: fn.body.end,
+    });
+    return [];
+  }
+
+  if (fn.type === "FunctionExpression") {
+    return pickFunctionExpressionBody(fn, context);
+  }
+
+  return [];
+}
+
+function parseNodeCallOptions(
+  args: Argument[],
+): CfgNodeCallOptions | undefined {
+  const secondArg = args[1];
+  if (!secondArg || secondArg.type === "SpreadElement") {
+    return undefined;
+  }
+
+  if (secondArg.type !== "ObjectExpression") {
+    return undefined;
+  }
+
+  const parsed = parseExpressionAsJson(secondArg);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const options: CfgNodeCallOptions = {};
+
+  if (obj.credentials && typeof obj.credentials === "object" && !Array.isArray(obj.credentials)) {
+    options.credentials = obj.credentials as Record<string, { id: string; name?: string }>;
+  }
+
+  if (typeof obj.name === "string") {
+    options.name = obj.name;
+  }
+
+  if (
+    Array.isArray(obj.position) &&
+    obj.position.length === 2 &&
+    typeof obj.position[0] === "number" &&
+    typeof obj.position[1] === "number"
+  ) {
+    options.position = obj.position as [number, number];
+  }
+
+  return Object.keys(options).length > 0 ? options : undefined;
 }
 
 function pushDiagnostic(

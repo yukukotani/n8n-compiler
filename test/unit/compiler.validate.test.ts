@@ -143,9 +143,24 @@ test("validateWorkflow は存在しないノード参照を E_INVALID_CONNECTION
   );
 });
 
-test("validateWorkflow は if 配線不正を E_INVALID_CONNECTION で返す", () => {
+test("validateWorkflow は if の片側出力のみでも受理する", () => {
   const workflow = createValidWorkflow();
   workflow.edges = workflow.edges.filter((edge) => !(edge.from === "if_2" && edge.fromOutputIndex === 1));
+
+  const result = validateWorkflow("workflow.ts", workflow);
+
+  expect(result.diagnostics).toEqual([]);
+});
+
+test("validateWorkflow は if の不正 output index を E_INVALID_CONNECTION で返す", () => {
+  const workflow = createValidWorkflow();
+  workflow.edges.push({
+    from: "if_2",
+    fromOutputIndex: 2,
+    to: "noOp_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
 
   const result = validateWorkflow("workflow.ts", workflow);
 

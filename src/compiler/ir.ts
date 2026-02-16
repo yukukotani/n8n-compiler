@@ -11,6 +11,7 @@ export type WorkflowIR = {
 
 export type NodeIR = {
   key: string;
+  displayName?: string;
   n8nType: string;
   typeVersion: number;
   parameters: JsonObject;
@@ -40,6 +41,7 @@ type CreateNodeIRInput = {
   credentials?: Record<string, { id: string; name?: string }>;
   position?: [number, number];
   variableName?: string;
+  displayName?: string;
 };
 
 type CreateEdgeIRInput = {
@@ -69,6 +71,7 @@ export function createNodeIR(input: CreateNodeIRInput): NodeIR {
 
   return {
     key,
+    displayName: input.displayName,
     n8nType: input.n8nType,
     typeVersion: input.typeVersion ?? 1,
     parameters,

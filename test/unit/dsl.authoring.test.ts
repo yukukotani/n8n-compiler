@@ -434,3 +434,70 @@ test("webhookTrigger を TriggerNode として定義できる", () => {
 
   expect(definition.name).toBe("webhook-workflow");
 });
+
+test("googleCalendarTrigger を TriggerNode として定義できる", () => {
+  const trigger = n.googleCalendarTrigger({
+    calendarId: "test@example.com",
+    triggerOn: "eventCreated",
+  });
+
+  expect(trigger.__brand).toBe("NodeRef");
+  expect(trigger.kind).toBe("googleCalendarTrigger");
+  expect(trigger.params).toEqual({
+    calendarId: "test@example.com",
+    triggerOn: "eventCreated",
+  });
+
+  const definition = workflow({
+    name: "gcal-trigger-workflow",
+    triggers: [trigger],
+    execute() {
+      n.noOp();
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("gcal-trigger-workflow");
+});
+
+test("googleCalendar を ActionNode として定義できる", () => {
+  const node = n.googleCalendar({ start: "2025-01-01", end: "2025-01-02" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("googleCalendar");
+  expect(node.params).toEqual({ start: "2025-01-01", end: "2025-01-02" });
+
+  const definition = workflow({
+    name: "gcal-action-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.googleCalendar({ start: "2025-01-01", end: "2025-01-02" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("gcal-action-workflow");
+});
+
+test("n.parallel() で複数ブランチを定義できる", () => {
+  const definition = workflow({
+    name: "parallel-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.parallel(
+        () => { n.set({ values: { a: 1 } }); },
+        () => { n.noOp(); },
+      );
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("parallel-workflow");
+});
+
+test("ノードオプション (credentials/name) を渡せる", () => {
+  const node = n.httpRequest(
+    { method: "GET", url: "https://example.com" },
+    { name: "my request", credentials: { httpBasicAuth: { id: "cred-1" } } },
+  );
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("httpRequest");
+});

@@ -21,6 +21,7 @@ const TRIGGER_NODE_TYPES = new Set<string>([
   "n8n-nodes-base.manualTrigger",
   "n8n-nodes-base.scheduleTrigger",
   "n8n-nodes-base.webhook",
+  "n8n-nodes-base.googleCalendarTrigger",
 ]);
 
 export function validateWorkflow(file: string, workflow: WorkflowIR): ValidateWorkflowResult {
@@ -160,12 +161,7 @@ function validateIfWiring(nodes: NodeIR[], edges: EdgeIR[], context: ValidationC
       }
     }
 
-    if (!outputIndexes.has(0) || !outputIndexes.has(1)) {
-      pushConnectionDiagnostic(
-        context,
-        `if node ${node.key} must wire both true(0) and false(1) outputs`,
-      );
-    }
+    // Note: if nodes are allowed to have only one output wired (e.g. if-without-else)
   }
 }
 

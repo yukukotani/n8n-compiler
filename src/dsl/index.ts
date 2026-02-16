@@ -13,4 +13,5 @@ export const TRIGGER_NODE_KINDS: ReadonlySet<string> = new Set([
   "manualTrigger",
   "scheduleTrigger",
   "webhookTrigger",
+  "googleCalendarTrigger",
 ]);

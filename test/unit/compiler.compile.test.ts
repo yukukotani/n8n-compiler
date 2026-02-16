@@ -722,10 +722,380 @@ test("compile は validate diagnostics を集約して workflow を返さない"
   });
 
   expect(result.workflow).toBeNull();
-  expect(result.diagnostics).toContainEqual(
+   expect(result.diagnostics).toContainEqual(
     expect.objectContaining({
       code: "E_INVALID_TRIGGER",
       file: "invalid.ts",
     }),
   );
+});
+
+test("compile は googleCalendarTrigger をコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "gcal-trigger",
+      settings: {},
+      triggers: [n.googleCalendarTrigger({ calendarId: "test@example.com", triggerOn: "eventCreated" })],
+      execute() {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "gcal.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "googleCalendarTrigger_1",
+    "noOp_2",
+  ]);
+  expect(result.workflow.nodes[0]?.type).toBe("n8n-nodes-base.googleCalendarTrigger");
+  expect(result.workflow.nodes[0]?.parameters).toEqual({
+    calendarId: "test@example.com",
+    triggerOn: "eventCreated",
+  });
+});
+
+test("compile は googleCalendar アクションノードをコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "gcal-action",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.googleCalendar({ start: "2025-01-01", end: "2025-01-02" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "gcal-action.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "googleCalendar_2",
+  ]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.googleCalendar");
+  expect(result.workflow.nodes[1]?.typeVersion).toBe(1.3);
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    start: "2025-01-01",
+    end: "2025-01-02",
+  });
+});
+
+test("compile は n.parallel() で fan-out 接続をコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "parallel-test",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.parallel(
+          () => { n.set({ value: "a" }); },
+          () => { n.set({ value: "b" }); },
+          () => { n.noOp(); },
+        );
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "parallel.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "set_2",
+    "set_3",
+    "noOp_4",
+  ]);
+
+  // All 3 nodes should be connected from the trigger (order may vary)
+  const output0 = result.workflow.connections.manualTrigger_1?.main[0];
+  expect(output0).toHaveLength(3);
+  expect(output0).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ node: "set_2" }),
+      expect.objectContaining({ node: "set_3" }),
+      expect.objectContaining({ node: "noOp_4" }),
+    ]),
+  );
+});
+
+test("compile は if-without-else を正しくコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "if-no-else",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        if (n.expr("={{$json.ok}}")) {
+          n.noOp();
+        }
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "if-no-else.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "if_2",
+    "noOp_3",
+  ]);
+
+  // Only true branch should be wired
+  expect(result.workflow.connections.if_2).toEqual({
+    main: [
+      [{ node: "noOp_3", type: "main", index: 0 }],
+    ],
+  });
+});
+
+test("compile はノードオプション (credentials/name) を反映する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "options-test",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.httpRequest(
+          { method: "GET", url: "https://example.com" },
+          { name: "my request", credentials: { httpBasicAuth: { id: "cred-1", name: "My Auth" } } },
+        );
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "options.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const httpNode = result.workflow.nodes[1];
+  expect(httpNode?.name).toBe("my request");
+  expect(httpNode?.credentials).toEqual({
+    httpBasicAuth: { id: "cred-1", name: "My Auth" },
+  });
+});
+
+test("compile はトリガーオプション (credentials) を反映する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "trigger-options-test",
+      settings: {},
+      triggers: [
+        n.googleCalendarTrigger(
+          { calendarId: "test@example.com" },
+          { credentials: { googleCalendarOAuth2Api: { id: "cred-1", name: "Google Cal" } } },
+        ),
+      ],
+      execute() {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "trigger-options.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const triggerNode = result.workflow.nodes[0];
+  expect(triggerNode?.type).toBe("n8n-nodes-base.googleCalendarTrigger");
+  expect(triggerNode?.credentials).toEqual({
+    googleCalendarOAuth2Api: { id: "cred-1", name: "Google Cal" },
+  });
+});
+
+test("compile は httpRequest v4.2 の method をそのまま保持する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "http-v4",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.httpRequest({
+          method: "POST",
+          url: "https://example.com/api",
+          authentication: "predefinedCredentialType",
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: "={}",
+        });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "http-v4.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const httpNode = result.workflow.nodes[1];
+  expect(httpNode?.typeVersion).toBe(4.2);
+  expect(httpNode?.parameters.method).toBe("POST");
+  expect(httpNode?.parameters.requestMethod).toBeUndefined();
+  expect(httpNode?.parameters.authentication).toBe("predefinedCredentialType");
+  expect(httpNode?.parameters.sendBody).toBe(true);
+});
+
+test("compile は面接ブロック相当のワークフローをコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "面接ブロック",
+      settings: {},
+      triggers: [
+        n.googleCalendarTrigger(
+          { calendarId: "y.kotani@salescore.jp", triggerOn: "eventCreated" },
+          { credentials: { googleCalendarOAuth2Api: { id: "rbYinvqPmgGIoNpL", name: "(yuku) Google Calendar" } } },
+        ),
+      ],
+      execute() {
+        if (n.expr('={{ !$json.summary.includes("【自動】") }}')) {
+          if (n.expr('={{ $json.summary.includes("面接") || $json.summary.includes("オンラインミーティング") }}')) {
+            n.parallel(
+              () => {
+                n.httpRequest({
+                  method: "POST",
+                  url: "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                  authentication: "predefinedCredentialType",
+                  sendBody: true,
+                  specifyBody: "json",
+                }, { name: "work task", credentials: { googleCalendarOAuth2Api: { id: "rbYinvqPmgGIoNpL" } } });
+              },
+              () => {
+                n.httpRequest({
+                  method: "POST",
+                  url: "https://www.googleapis.com/calendar/v3/calendars/poyo0315@gmail.com/events?conferenceDataVersion=1",
+                  authentication: "predefinedCredentialType",
+                  sendBody: true,
+                  specifyBody: "json",
+                }, { name: "personal task", credentials: { googleCalendarOAuth2Api: { id: "rbYinvqPmgGIoNpL" } } });
+              },
+              () => {
+                n.googleCalendar({
+                  start: "={{ $json.start.dateTime }}",
+                  end: "={{ $json.end.dateTime }}",
+                }, { name: "all-day blocker", credentials: { googleCalendarOAuth2Api: { id: "rbYinvqPmgGIoNpL" } } });
+              },
+            );
+          }
+        }
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "interview.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.name).toBe("面接ブロック");
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "googleCalendarTrigger_1",
+    "if_2",
+    "if_3",
+    "work task",
+    "personal task",
+    "all-day blocker",
+  ]);
+
+  // Trigger → first if
+  expect(result.workflow.connections.googleCalendarTrigger_1).toEqual({
+    main: [[{ node: "if_2", type: "main", index: 0 }]],
+  });
+
+  // First if true → second if
+  expect(result.workflow.connections.if_2).toEqual({
+    main: [[{ node: "if_3", type: "main", index: 0 }]],
+  });
+
+  // Second if true → 3 parallel nodes
+  const secondIfConnections = result.workflow.connections.if_3;
+  expect(secondIfConnections?.main[0]).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ node: "work task" }),
+      expect.objectContaining({ node: "personal task" }),
+      expect.objectContaining({ node: "all-day blocker" }),
+    ]),
+  );
+  expect(secondIfConnections?.main[0]).toHaveLength(3);
+
+  // work task has credentials
+  const workTask = result.workflow.nodes.find((n) => n.name === "work task");
+  expect(workTask?.credentials).toEqual({
+    googleCalendarOAuth2Api: { id: "rbYinvqPmgGIoNpL" },
+  });
+  expect(workTask?.type).toBe("n8n-nodes-base.httpRequest");
+  expect(workTask?.typeVersion).toBe(4.2);
+
+  // all-day blocker is googleCalendar
+  const blocker = result.workflow.nodes.find((n) => n.name === "all-day blocker");
+  expect(blocker?.type).toBe("n8n-nodes-base.googleCalendar");
+  expect(blocker?.typeVersion).toBe(1.3);
 });
