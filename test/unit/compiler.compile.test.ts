@@ -327,6 +327,38 @@ test("compile は merge を n8n merge ノードとしてコンパイルする", 
   expect(result.workflow.nodes[1]?.parameters).toEqual({ mode: "append" });
 });
 
+test("compile は aggregate を n8n aggregate ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "aggregate-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.aggregate({ aggregate: "sum", field: "amount" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "aggregate.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "aggregate_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.aggregate");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    aggregate: "sum",
+    field: "amount",
+  });
+});
+
 test("compile は wait を n8n wait ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

@@ -203,6 +203,37 @@ test("lowerControlFlowGraphToIR は merge を n8n merge ノードに lowering �
   ]);
 });
 
+test("lowerControlFlowGraphToIR は aggregate を n8n aggregate ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.aggregate({ aggregate: "sum", field: "amount" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "aggregate_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "aggregate_2",
+      n8nType: "n8n-nodes-base.aggregate",
+      parameters: { aggregate: "sum", field: "amount" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "aggregate_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は wait を n8n wait ノードに lowering する", () => {
   const workflow = lowerFromSource(`
     export default workflow({

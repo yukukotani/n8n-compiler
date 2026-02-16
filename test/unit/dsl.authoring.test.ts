@@ -204,6 +204,24 @@ test("merge を ActionNode として定義できる", () => {
   expect(definition.name).toBe("merge-workflow");
 });
 
+test("aggregate を ActionNode として定義できる", () => {
+  const node = n.aggregate({ aggregate: "sum", field: "amount" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("aggregate");
+  expect(node.params).toEqual({ aggregate: "sum", field: "amount" });
+
+  const definition = workflow({
+    name: "aggregate-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.aggregate({ aggregate: "sum", field: "amount" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("aggregate-workflow");
+});
+
 test("wait を ActionNode として定義できる", () => {
   const node = n.wait({ amount: 1, unit: "minutes" });
 
