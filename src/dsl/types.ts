@@ -69,6 +69,7 @@ export type NodeKind =
   | "filter"
   | "merge"
   | "respondToWebhook"
+  | "sort"
   | "splitOut"
   | "switch"
   | "set"

@@ -269,6 +269,37 @@ test("compile は respondToWebhook を n8n respondToWebhook ノードとして�
   });
 });
 
+test("compile は sort を n8n sort ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sort-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.sort({ fields: [{ fieldName: "priority", order: "ascending" }] });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "sort.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "sort_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.sort");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    fields: [{ fieldName: "priority", order: "ascending" }],
+  });
+});
+
 test("compile は splitOut を n8n splitout ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

@@ -56,6 +56,10 @@ export const n = {
     return createNodeRef("respondToWebhook", params);
   },
 
+  sort(params: NodeParams): NodeRef<"sort"> {
+    return createNodeRef("sort", params);
+  },
+
   splitOut(params: NodeParams): NodeRef<"splitOut"> {
     return createNodeRef("splitOut", params);
   },

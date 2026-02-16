@@ -150,6 +150,24 @@ test("respondToWebhook を ActionNode として定義できる", () => {
   expect(definition.name).toBe("respond-to-webhook-workflow");
 });
 
+test("sort を ActionNode として定義できる", () => {
+  const node = n.sort({ fields: [{ fieldName: "priority", order: "ascending" }] });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("sort");
+  expect(node.params).toEqual({ fields: [{ fieldName: "priority", order: "ascending" }] });
+
+  const definition = workflow({
+    name: "sort-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.sort({ fields: [{ fieldName: "priority", order: "ascending" }] });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("sort-workflow");
+});
+
 test("splitOut を ActionNode として定義できる", () => {
   const node = n.splitOut({ fieldToSplitOut: "items" });
 

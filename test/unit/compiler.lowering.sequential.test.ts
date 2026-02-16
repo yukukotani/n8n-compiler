@@ -141,6 +141,37 @@ test("lowerControlFlowGraphToIR は respondToWebhook を n8n respondToWebhook �
   ]);
 });
 
+test("lowerControlFlowGraphToIR は sort を n8n sort ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.sort({ fields: [{ fieldName: "priority", order: "ascending" }] });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "sort_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "sort_2",
+      n8nType: "n8n-nodes-base.sort",
+      parameters: { fields: [{ fieldName: "priority", order: "ascending" }] },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "sort_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は splitOut を n8n splitout ノードに lowering する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
