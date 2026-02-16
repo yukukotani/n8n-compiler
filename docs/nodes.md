@@ -2,14 +2,15 @@
 
 ## 現在の対応状況（このリポジトリ）
 
-- DSLの `NodeKind` は `manualTrigger / scheduleTrigger / httpRequest / set / noOp` のみ
-- `execute` 内で許可される DSL 呼び出しは `httpRequest / set / noOp`
-- 制御構文から合成されるノードとして `if` と `splitInBatches` は既に実装済み
+- DSL の `NodeKind` は P0 対応済み（`manualTrigger / scheduleTrigger / webhookTrigger / httpRequest / respondToWebhook / switch / merge / wait / filter / splitOut / aggregate / sort / limit / removeDuplicates / summarize / code / executeWorkflow / set / noOp`）
+- `execute` 内で許可される DSL 呼び出しも P0 対応済み（trigger 以外）
+- 制御構文から合成されるノードは `if / splitInBatches / switch` を実装済み
+- `switch` は TypeScript 標準構文（`switch (...) { case ...: ...; break; default: ... }`）から変換
 
 参照:
-- `src/dsl/types.ts:63`
-- `src/compiler/cfg.ts:17`
-- `src/compiler/lowering.ts:39`
+- `src/dsl/types.ts`
+- `src/compiler/cfg.ts`
+- `src/compiler/lowering.ts`
 
 ## 選定方針
 
@@ -22,6 +23,8 @@
 ## 対応すべきノード一覧（優先度順）
 
 ### P0（最優先: 実用性を一気に上げる）
+
+完了（2026-02-17 時点）
 
 | 優先度 | DSL名（案） | n8n type | 種別 | 理由 |
 |---|---|---|---|---|

@@ -47,7 +47,9 @@ MVP サポートは次の通りです。
 - `triggers` は配列リテラルで、1 つ以上のトリガーノードを指定します
 - 例: `triggers: [n.manualTrigger()]`
 - スケジュール例: `triggers: [n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] })]`
+- Webhook 例: `triggers: [n.webhookTrigger({ path: "incoming", httpMethod: "POST" })]`
 - 複数指定可: `triggers: [n.manualTrigger(), n.scheduleTrigger({ schedules: [{ type: "hours", intervalHours: 1 }] })]`
+- 現在サポートされる trigger は `manualTrigger / scheduleTrigger / webhookTrigger`
 - `scheduleTrigger` の `schedules` は `type` による判別共用体で、`type` に応じたパラメータを指定します:
   - `seconds`: `intervalSeconds`
   - `minutes`: `intervalMinutes`
@@ -56,28 +58,47 @@ MVP サポートは次の通りです。
   - `weeks`: `intervalWeeks`, `onWeekdays?`, `atHour?`, `atMinute?`
   - `months`: `intervalMonths`, `atDayOfMonth?`, `atHour?`, `atMinute?`
   - `cron`: `expression`
-- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)` 等）は `execute` 内に書くとエラーになります
+- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`）は `execute` 内に書くとエラーになります
 
 ### execute 内のサポート構文
 
 - ブロック文: `{ ... }`
-- DSL ノード呼び出し: `n.httpRequest(...)`, `n.set(...)`, `n.noOp(...)`
+- DSL ノード呼び出し:
+  - `n.httpRequest(...)`
+  - `n.respondToWebhook(...)`
+  - `n.merge(...)`
+  - `n.wait(...)`
+  - `n.filter(...)`
+  - `n.splitOut(...)`
+  - `n.aggregate(...)`
+  - `n.sort(...)`
+  - `n.limit(...)`
+  - `n.removeDuplicates(...)`
+  - `n.summarize(...)`
+  - `n.code(...)`
+  - `n.executeWorkflow(...)`
+  - `n.switch(...)`（ノードとして直接呼ぶ場合）
+  - `n.set(...)`
+  - `n.noOp(...)`
 - 変数代入つきノード呼び出し: `const req = n.httpRequest(...)`
 - 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
+- `switch` 構文: `switch (expr) { case ...: ...; break; default: ... }`
 - ループ: `for (const item of n.loop({...})) { ... }`
 
 ### 非サポート/制約
 
 - `execute` はブロックボディを持つ関数式/アロー関数である必要がある
-- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)` 等）を `execute` 内で使うことは非対応（`triggers` に指定）
+- トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)`, `n.webhookTrigger(...)`）を `execute` 内で使うことは非対応（`triggers` に指定）
 - 未知の DSL 呼び出し（例: `n.unknownNode(...)`）は非対応
 - `n.expr(...)` と `n.loop(...)` を単独ノード呼び出しとして使うことは非対応
 - `if` 条件は boolean リテラル、`n.expr(...)`、または前ノード参照を使う式（例: `check.ok`, `check.ok == true`, `!check.ok`, `check.count > 0`, `check.ok && check.ready`）に対応
+- `switch` 条件式はシリアライズ可能な式のみ対応、`case` は literal（`string/number/boolean/null`）のみ対応
+- `switch` の fallthrough は非対応（`break` が必要）
 - `for await...of` は非対応
 - `for...of` は `const` で 1 つの識別子束縛が必須
 - `for...of` の右辺は `n.loop(...)` のみ対応
-- `return` / `while` / `switch` など、MVP 対象外ステートメントは非対応
+- `return` / `while` など、MVP 対象外ステートメントは非対応
 - `workflow.name` は文字列リテラル必須
 - `workflow.settings` は JSON オブジェクトリテラル必須（省略時 `{}`）
 - `workflow.triggers` は配列リテラル必須、1 つ以上のトリガーが必要
