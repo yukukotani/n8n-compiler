@@ -65,6 +65,7 @@ export type NodeKind =
   | "scheduleTrigger"
   | "webhookTrigger"
   | "httpRequest"
+  | "filter"
   | "merge"
   | "respondToWebhook"
   | "switch"

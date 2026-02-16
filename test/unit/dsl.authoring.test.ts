@@ -204,6 +204,63 @@ test("wait を ActionNode として定義できる", () => {
   expect(definition.name).toBe("wait-workflow");
 });
 
+test("filter を ActionNode として定義できる", () => {
+  const node = n.filter({
+    conditions: {
+      conditions: [
+        {
+          leftValue: "={{$json.status}}",
+          rightValue: "ok",
+          operator: {
+            type: "string",
+            operation: "equals",
+          },
+        },
+      ],
+    },
+  });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("filter");
+  expect(node.params).toEqual({
+    conditions: {
+      conditions: [
+        {
+          leftValue: "={{$json.status}}",
+          rightValue: "ok",
+          operator: {
+            type: "string",
+            operation: "equals",
+          },
+        },
+      ],
+    },
+  });
+
+  const definition = workflow({
+    name: "filter-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.filter({
+        conditions: {
+          conditions: [
+            {
+              leftValue: "={{$json.status}}",
+              rightValue: "ok",
+              operator: {
+                type: "string",
+                operation: "equals",
+              },
+            },
+          ],
+        },
+      });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("filter-workflow");
+});
+
 test("webhookTrigger を TriggerNode として定義できる", () => {
   const trigger = n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
 

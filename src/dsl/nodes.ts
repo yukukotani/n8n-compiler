@@ -40,6 +40,10 @@ export const n = {
     return createNodeRef("httpRequest", params);
   },
 
+  filter(params: NodeParams): NodeRef<"filter"> {
+    return createNodeRef("filter", params);
+  },
+
   merge(params: NodeParams): NodeRef<"merge"> {
     return createNodeRef("merge", params);
   },

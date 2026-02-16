@@ -331,6 +331,55 @@ test("compile は wait を n8n wait ノードとしてコンパイルする", ()
   });
 });
 
+test("compile は filter を n8n filter ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "filter-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.filter({
+          conditions: {
+            conditions: [
+              {
+                leftValue: "={{$json.status}}",
+                rightValue: "ok",
+                operator: { type: "string", operation: "equals" },
+              },
+            ],
+          },
+        });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "filter.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "filter_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.filter");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    conditions: {
+      conditions: [
+        {
+          leftValue: "={{$json.status}}",
+          rightValue: "ok",
+          operator: { type: "string", operation: "equals" },
+        },
+      ],
+    },
+  });
+});
+
 test("compile は TS switch 構文を switch ノード + 分岐接続にコンパイルする", () => {
   const sourceText = `
     export default workflow({

@@ -42,6 +42,7 @@ const NODE_TYPE_BY_KIND = {
   scheduleTrigger: "n8n-nodes-base.scheduleTrigger",
   webhookTrigger: "n8n-nodes-base.webhook",
   httpRequest: "n8n-nodes-base.httpRequest",
+  filter: "n8n-nodes-base.filter",
   merge: "n8n-nodes-base.merge",
   respondToWebhook: "n8n-nodes-base.respondToWebhook",
   switch: "n8n-nodes-base.switch",
