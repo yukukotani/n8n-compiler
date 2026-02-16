@@ -358,6 +358,37 @@ test("lowerControlFlowGraphToIR は wait を n8n wait ノードに lowering す�
   ]);
 });
 
+test("lowerControlFlowGraphToIR は code を n8n code ノードに lowering し params を維持する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "code_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "code_2",
+      n8nType: "n8n-nodes-base.code",
+      parameters: { jsCode: "return items;", mode: "runOnceForAllItems" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "code_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は filter を n8n filter ノードに lowering する", () => {
   const workflow = lowerFromSource(`
     export default workflow({

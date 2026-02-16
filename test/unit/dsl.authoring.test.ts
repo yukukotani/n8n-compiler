@@ -132,6 +132,24 @@ test("Schedule 型は type ごとに discriminated union として機能する",
   expect(trigger.params.schedules).toHaveLength(7);
 });
 
+test("code を ActionNode として定義でき、params をそのまま保持する", () => {
+  const node = n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("code");
+  expect(node.params).toEqual({ jsCode: "return items;", mode: "runOnceForAllItems" });
+
+  const definition = workflow({
+    name: "code-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("code-workflow");
+});
+
 test("respondToWebhook を ActionNode として定義できる", () => {
   const node = n.respondToWebhook({ respondWith: "json", responseBody: "={{$json}}" });
 

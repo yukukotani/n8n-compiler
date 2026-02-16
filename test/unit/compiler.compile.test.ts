@@ -489,6 +489,38 @@ test("compile は wait を n8n wait ノードとしてコンパイルする", ()
   });
 });
 
+test("compile は code を n8n code ノードとしてコンパイルし params を透過する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "code-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "code.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "code_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.code");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    jsCode: "return items;",
+    mode: "runOnceForAllItems",
+  });
+});
+
 test("compile は filter を n8n filter ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

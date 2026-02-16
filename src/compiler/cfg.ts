@@ -18,6 +18,7 @@ import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 
 const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "httpRequest",
+  "code",
   "aggregate",
   "filter",
   "limit",

@@ -40,6 +40,10 @@ export const n = {
     return createNodeRef("httpRequest", params);
   },
 
+  code(params: NodeParams): NodeRef<"code"> {
+    return createNodeRef("code", params);
+  },
+
   aggregate(params: NodeParams): NodeRef<"aggregate"> {
     return createNodeRef("aggregate", params);
   },
