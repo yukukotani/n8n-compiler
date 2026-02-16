@@ -521,6 +521,42 @@ test("compile は code を n8n code ノードとしてコンパイルし params 
   });
 });
 
+test("compile は executeWorkflow を n8n executeworkflow ノードとしてコンパイルし params を透過する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "execute-workflow-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.executeWorkflow({ workflowId: "wf_123", mode: "once", options: { waitForSubWorkflow: true } });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "execute-workflow.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "executeWorkflow_2",
+  ]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.executeworkflow");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    workflowId: "wf_123",
+    mode: "once",
+    options: { waitForSubWorkflow: true },
+  });
+});
+
 test("compile は filter を n8n filter ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

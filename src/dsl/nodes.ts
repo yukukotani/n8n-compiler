@@ -40,6 +40,10 @@ export const n = {
     return createNodeRef("httpRequest", params);
   },
 
+  executeWorkflow(params: NodeParams): NodeRef<"executeWorkflow"> {
+    return createNodeRef("executeWorkflow", params);
+  },
+
   code(params: NodeParams): NodeRef<"code"> {
     return createNodeRef("code", params);
   },
