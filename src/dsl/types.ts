@@ -8,49 +8,47 @@ export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger";
 
 // --- Schedule Trigger params ---
 
-export type ScheduleTriggerInterval =
+export type Schedule =
   | {
-      field: "seconds";
-      secondsInterval: number;
+      type: "seconds";
+      intervalSeconds: number;
     }
   | {
-      field: "minutes";
-      minutesInterval: number;
+      type: "minutes";
+      intervalMinutes: number;
     }
   | {
-      field: "hours";
-      hoursInterval: number;
-      triggerAtMinute?: number;
+      type: "hours";
+      intervalHours: number;
+      atMinute?: number;
     }
   | {
-      field: "days";
-      daysInterval: number;
-      triggerAtHour?: number;
-      triggerAtMinute?: number;
+      type: "days";
+      intervalDays: number;
+      atHour?: number;
+      atMinute?: number;
     }
   | {
-      field: "weeks";
-      weeksInterval: number;
-      triggerOnWeekdays?: string[];
-      triggerAtHour?: number;
-      triggerAtMinute?: number;
+      type: "weeks";
+      intervalWeeks: number;
+      onWeekdays?: string[];
+      atHour?: number;
+      atMinute?: number;
     }
   | {
-      field: "months";
-      monthsInterval: number;
-      triggerAtDayOfMonth?: number;
-      triggerAtHour?: number;
-      triggerAtMinute?: number;
+      type: "months";
+      intervalMonths: number;
+      atDayOfMonth?: number;
+      atHour?: number;
+      atMinute?: number;
     }
   | {
-      field: "cronExpression";
+      type: "cron";
       expression: string;
     };
 
 export type ScheduleTriggerParams = {
-  rule: {
-    interval: ScheduleTriggerInterval[];
-  };
+  schedules: Schedule[];
 };
 
 export type WorkflowDefinition = {

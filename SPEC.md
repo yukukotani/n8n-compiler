@@ -139,6 +139,19 @@ export type WorkflowDefinition = {
   execute: () => void | Promise<void>;
 };
 
+export type Schedule =
+  | { type: "seconds"; intervalSeconds: number }
+  | { type: "minutes"; intervalMinutes: number }
+  | { type: "hours"; intervalHours: number; atMinute?: number }
+  | { type: "days"; intervalDays: number; atHour?: number; atMinute?: number }
+  | { type: "weeks"; intervalWeeks: number; onWeekdays?: string[]; atHour?: number; atMinute?: number }
+  | { type: "months"; intervalMonths: number; atDayOfMonth?: number; atHour?: number; atMinute?: number }
+  | { type: "cron"; expression: string };
+
+export type ScheduleTriggerParams = {
+  schedules: Schedule[];
+};
+
 export declare function workflow(def: WorkflowDefinition): WorkflowDefinition;
 
 export declare const n: {

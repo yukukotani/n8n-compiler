@@ -46,16 +46,16 @@ MVP サポートは次の通りです。
 
 - `triggers` は配列リテラルで、1 つ以上のトリガーノードを指定します
 - 例: `triggers: [n.manualTrigger()]`
-- スケジュール例: `triggers: [n.scheduleTrigger({ rule: { interval: [{ field: "minutes", minutesInterval: 5 }] } })]`
-- 複数指定可: `triggers: [n.manualTrigger(), n.scheduleTrigger({ rule: { interval: [{ field: "hours", hoursInterval: 1 }] } })]`
-- `scheduleTrigger` の `rule.interval` は判別共用体で、`field` に応じたパラメータを指定します:
-  - `seconds`: `secondsInterval`
-  - `minutes`: `minutesInterval`
-  - `hours`: `hoursInterval`, `triggerAtMinute?`
-  - `days`: `daysInterval`, `triggerAtHour?`, `triggerAtMinute?`
-  - `weeks`: `weeksInterval`, `triggerOnWeekdays?`, `triggerAtHour?`, `triggerAtMinute?`
-  - `months`: `monthsInterval`, `triggerAtDayOfMonth?`, `triggerAtHour?`, `triggerAtMinute?`
-  - `cronExpression`: `expression`
+- スケジュール例: `triggers: [n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] })]`
+- 複数指定可: `triggers: [n.manualTrigger(), n.scheduleTrigger({ schedules: [{ type: "hours", intervalHours: 1 }] })]`
+- `scheduleTrigger` の `schedules` は `type` による判別共用体で、`type` に応じたパラメータを指定します:
+  - `seconds`: `intervalSeconds`
+  - `minutes`: `intervalMinutes`
+  - `hours`: `intervalHours`, `atMinute?`
+  - `days`: `intervalDays`, `atHour?`, `atMinute?`
+  - `weeks`: `intervalWeeks`, `onWeekdays?`, `atHour?`, `atMinute?`
+  - `months`: `intervalMonths`, `atDayOfMonth?`, `atHour?`, `atMinute?`
+  - `cron`: `expression`
 - トリガーノード（`n.manualTrigger(...)`, `n.scheduleTrigger(...)` 等）は `execute` 内に書くとエラーになります
 
 ### execute 内のサポート構文

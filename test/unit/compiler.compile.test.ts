@@ -116,7 +116,7 @@ test("compile は scheduleTrigger を含む workflow を正しくコンパイル
     export default workflow({
       name: "scheduled",
       settings: {},
-      triggers: [n.scheduleTrigger({ rule: { interval: [{ field: "minutes", minutesInterval: 5 }] } })],
+      triggers: [n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] })],
       execute() {
         n.set({ value: "ok" });
       },
@@ -162,7 +162,7 @@ test("compile は manualTrigger と scheduleTrigger を併用できる", () => {
       settings: {},
       triggers: [
         n.manualTrigger(),
-        n.scheduleTrigger({ rule: { interval: [{ field: "hours", hoursInterval: 1 }] } }),
+        n.scheduleTrigger({ schedules: [{ type: "hours", intervalHours: 1 }] }),
       ],
       execute() {
         n.noOp();

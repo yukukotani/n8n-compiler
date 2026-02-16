@@ -26,6 +26,7 @@ const TRANSFORMERS: Record<string, ParamTransformer> = {
   "n8n-nodes-base.httpRequest": transformHttpRequest,
   "n8n-nodes-base.set": transformSet,
   "n8n-nodes-base.if": transformIf,
+  "n8n-nodes-base.scheduleTrigger": transformScheduleTrigger,
 };
 
 /**
@@ -136,6 +137,79 @@ function transformIf(_typeVersion: number, params: JsonObject): JsonObject {
   }
 
   return params;
+}
+
+/**
+ * ScheduleTrigger uses ergonomic `schedules` array in the DSL.
+ *
+ * DSL:  { schedules: [{ type: "days", intervalDays: 2, atHour: 9, atMinute: 30 }] }
+ * n8n:  { rule: { interval: [{ field: "days", daysInterval: 2, triggerAtHour: 9, triggerAtMinute: 30 }] } }
+ */
+function transformScheduleTrigger(_typeVersion: number, params: JsonObject): JsonObject {
+  if (!("schedules" in params) || !Array.isArray(params.schedules)) {
+    return params;
+  }
+
+  const interval = (params.schedules as JsonObject[]).map(transformScheduleEntry);
+
+  return {
+    rule: { interval } as unknown as JsonObject[keyof JsonObject],
+  } as JsonObject;
+}
+
+type N8nInterval = Record<string, unknown>;
+
+function transformScheduleEntry(schedule: JsonObject): N8nInterval {
+  const type = schedule.type as string;
+
+  switch (type) {
+    case "seconds":
+      return {
+        field: "seconds",
+        secondsInterval: schedule.intervalSeconds,
+      };
+    case "minutes":
+      return {
+        field: "minutes",
+        minutesInterval: schedule.intervalMinutes,
+      };
+    case "hours":
+      return {
+        field: "hours",
+        hoursInterval: schedule.intervalHours,
+        ...(schedule.atMinute != null && { triggerAtMinute: schedule.atMinute }),
+      };
+    case "days":
+      return {
+        field: "days",
+        daysInterval: schedule.intervalDays,
+        ...(schedule.atHour != null && { triggerAtHour: schedule.atHour }),
+        ...(schedule.atMinute != null && { triggerAtMinute: schedule.atMinute }),
+      };
+    case "weeks":
+      return {
+        field: "weeks",
+        weeksInterval: schedule.intervalWeeks,
+        ...(schedule.onWeekdays != null && { triggerOnWeekdays: schedule.onWeekdays }),
+        ...(schedule.atHour != null && { triggerAtHour: schedule.atHour }),
+        ...(schedule.atMinute != null && { triggerAtMinute: schedule.atMinute }),
+      };
+    case "months":
+      return {
+        field: "months",
+        monthsInterval: schedule.intervalMonths,
+        ...(schedule.atDayOfMonth != null && { triggerAtDayOfMonth: schedule.atDayOfMonth }),
+        ...(schedule.atHour != null && { triggerAtHour: schedule.atHour }),
+        ...(schedule.atMinute != null && { triggerAtMinute: schedule.atMinute }),
+      };
+    case "cron":
+      return {
+        field: "cronExpression",
+        expression: schedule.expression,
+      };
+    default:
+      return schedule;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

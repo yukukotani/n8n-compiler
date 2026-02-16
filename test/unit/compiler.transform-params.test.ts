@@ -165,15 +165,142 @@ describe("transformParameters", () => {
   });
 
   describe("scheduleTrigger", () => {
-    test("rule パラメータをそのまま通す", () => {
-      const params = {
-        rule: {
-          interval: [{ field: "minutes", minutesInterval: 5 }],
-        },
-      };
-      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, params);
+    test("seconds スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "seconds", intervalSeconds: 30 }],
+      });
 
-      expect(result).toEqual(params);
+      expect(result).toEqual({
+        rule: { interval: [{ field: "seconds", secondsInterval: 30 }] },
+      });
+    });
+
+    test("minutes スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "minutes", intervalMinutes: 5 }],
+      });
+
+      expect(result).toEqual({
+        rule: { interval: [{ field: "minutes", minutesInterval: 5 }] },
+      });
+    });
+
+    test("hours スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "hours", intervalHours: 2, atMinute: 15 }],
+      });
+
+      expect(result).toEqual({
+        rule: {
+          interval: [{ field: "hours", hoursInterval: 2, triggerAtMinute: 15 }],
+        },
+      });
+    });
+
+    test("hours スケジュールの atMinute 省略時は triggerAtMinute を含めない", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "hours", intervalHours: 1 }],
+      });
+
+      expect(result).toEqual({
+        rule: { interval: [{ field: "hours", hoursInterval: 1 }] },
+      });
+    });
+
+    test("days スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "days", intervalDays: 2, atHour: 9, atMinute: 30 }],
+      });
+
+      expect(result).toEqual({
+        rule: {
+          interval: [{ field: "days", daysInterval: 2, triggerAtHour: 9, triggerAtMinute: 30 }],
+        },
+      });
+    });
+
+    test("weeks スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [
+          {
+            type: "weeks",
+            intervalWeeks: 1,
+            onWeekdays: ["monday"],
+            atHour: 9,
+            atMinute: 0,
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        rule: {
+          interval: [
+            {
+              field: "weeks",
+              weeksInterval: 1,
+              triggerOnWeekdays: ["monday"],
+              triggerAtHour: 9,
+              triggerAtMinute: 0,
+            },
+          ],
+        },
+      });
+    });
+
+    test("months スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [
+          {
+            type: "months",
+            intervalMonths: 3,
+            atDayOfMonth: 15,
+            atHour: 10,
+            atMinute: 0,
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        rule: {
+          interval: [
+            {
+              field: "months",
+              monthsInterval: 3,
+              triggerAtDayOfMonth: 15,
+              triggerAtHour: 10,
+              triggerAtMinute: 0,
+            },
+          ],
+        },
+      });
+    });
+
+    test("cron スケジュールを n8n interval に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [{ type: "cron", expression: "*/5 * * * *" }],
+      });
+
+      expect(result).toEqual({
+        rule: { interval: [{ field: "cronExpression", expression: "*/5 * * * *" }] },
+      });
+    });
+
+    test("複数スケジュールを一度に変換できる", () => {
+      const result = transformParameters("n8n-nodes-base.scheduleTrigger", 1.2, {
+        schedules: [
+          { type: "minutes", intervalMinutes: 5 },
+          { type: "cron", expression: "0 9 * * 1-5" },
+        ],
+      });
+
+      expect(result).toEqual({
+        rule: {
+          interval: [
+            { field: "minutes", minutesInterval: 5 },
+            { field: "cronExpression", expression: "0 9 * * 1-5" },
+          ],
+        },
+      });
     });
   });
 

@@ -5,7 +5,19 @@ export default workflow({
   settings: {
     timezone: "Asia/Tokyo",
   },
-  triggers: [n.manualTrigger()],
+  triggers: [
+    n.manualTrigger(),
+    n.scheduleTrigger({
+      schedules: [
+        {
+          type: "days",
+          intervalDays: 1,
+          atHour: 18,
+          atMinute: 4,
+        },
+      ],
+    }),
+  ],
   execute() {
     const res = n.httpRequest({
       method: "GET",

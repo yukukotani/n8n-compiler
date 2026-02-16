@@ -300,7 +300,7 @@ test("buildControlFlowGraph は execute 内の scheduleTrigger 呼び出しを�
       name: "sample",
       triggers: [n.manualTrigger()],
       execute() {
-        n.scheduleTrigger({ rule: { interval: [{ field: "minutes", minutesInterval: 5 }] } });
+        n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] });
         n.set({ value: "ok" });
       },
     });
