@@ -269,6 +269,35 @@ test("compile は respondToWebhook を n8n respondToWebhook ノードとして�
   });
 });
 
+test("compile は merge を n8n merge ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "merge-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.merge({ mode: "append" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "merge.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "merge_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.merge");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({ mode: "append" });
+});
+
 test("compile は TS switch 構文を switch ノード + 分岐接続にコンパイルする", () => {
   const sourceText = `
     export default workflow({

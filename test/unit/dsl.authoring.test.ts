@@ -168,6 +168,24 @@ test("switch を ActionNode として定義できる", () => {
   expect(definition.name).toBe("switch-workflow");
 });
 
+test("merge を ActionNode として定義できる", () => {
+  const node = n.merge({ mode: "append" });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("merge");
+  expect(node.params).toEqual({ mode: "append" });
+
+  const definition = workflow({
+    name: "merge-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.merge({ mode: "append" });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("merge-workflow");
+});
+
 test("webhookTrigger を TriggerNode として定義できる", () => {
   const trigger = n.webhookTrigger({ path: "incoming", httpMethod: "POST" });
 

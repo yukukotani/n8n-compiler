@@ -40,6 +40,10 @@ export const n = {
     return createNodeRef("httpRequest", params);
   },
 
+  merge(params: NodeParams): NodeRef<"merge"> {
+    return createNodeRef("merge", params);
+  },
+
   respondToWebhook(params: NodeParams): NodeRef<"respondToWebhook"> {
     return createNodeRef("respondToWebhook", params);
   },

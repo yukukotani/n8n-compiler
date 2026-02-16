@@ -141,6 +141,37 @@ test("lowerControlFlowGraphToIR は respondToWebhook を n8n respondToWebhook �
   ]);
 });
 
+test("lowerControlFlowGraphToIR は merge を n8n merge ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.merge({ mode: "append" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "merge_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "merge_2",
+      n8nType: "n8n-nodes-base.merge",
+      parameters: { mode: "append" },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "merge_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は Block 内の文も逐次接続する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
