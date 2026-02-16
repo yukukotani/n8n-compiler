@@ -88,7 +88,7 @@
       "parameters": {},
       "position": [
         0,
-        0
+        96
       ],
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1
@@ -117,8 +117,8 @@
         "options": {}
       },
       "position": [
-        260,
-        0
+        224,
+        96
       ],
       "type": "n8n-nodes-base.if",
       "typeVersion": 2
@@ -127,7 +127,7 @@
       "name": "noOp_3",
       "parameters": {},
       "position": [
-        520,
+        448,
         0
       ],
       "type": "n8n-nodes-base.noOp",
@@ -139,8 +139,8 @@
         "value": "fallback"
       },
       "position": [
-        780,
-        0
+        448,
+        192
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 1
@@ -149,8 +149,8 @@
       "name": "splitInBatches_5",
       "parameters": {},
       "position": [
-        1040,
-        0
+        672,
+        96
       ],
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3
@@ -162,7 +162,7 @@
         "url": "https://example.com"
       },
       "position": [
-        1300,
+        896,
         0
       ],
       "type": "n8n-nodes-base.httpRequest",
@@ -174,8 +174,8 @@
         "value": "done"
       },
       "position": [
-        1560,
-        0
+        896,
+        192
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 1

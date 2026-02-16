@@ -3,6 +3,7 @@ export * from "./connections";
 export * from "./cfg";
 export * from "./extract-entry";
 export * from "./ir";
+export * from "./layout";
 export * from "./lowering";
 export * from "./parse";
 export * from "./validate";

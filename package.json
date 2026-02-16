@@ -8,12 +8,14 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/dagre": "^0.7.53"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^2.0.4",
     "oxc-parser": "^0.112.0"
   }
 }

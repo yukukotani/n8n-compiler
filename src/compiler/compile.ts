@@ -10,6 +10,7 @@ import { buildControlFlowGraph } from "./cfg";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 import { extractEntry } from "./extract-entry";
 import type { NodeIR } from "./ir";
+import { computeLayout, type NodePosition } from "./layout";
 import { lowerControlFlowGraphToIR, type TriggerInput } from "./lowering";
 import { parseSync } from "./parse";
 import { transformParameters } from "./transform-params";
@@ -105,11 +106,14 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  const positions = computeLayout(workflowIR.nodes, workflowIR.edges);
+  const positionMap = new Map(positions.map((p) => [p.nodeKey, p]));
+
   return {
     workflow: {
       name: workflowIR.name,
       settings: workflowIR.settings as JsonObject,
-      nodes: workflowIR.nodes.map(toN8nNode),
+      nodes: workflowIR.nodes.map((node) => toN8nNode(node, positionMap)),
       connections: buildN8nConnections(workflowIR.edges),
     },
     diagnostics,
@@ -178,14 +182,17 @@ function buildWorkflowMetadata(
   };
 }
 
-const DEFAULT_POSITION_X_SPACING = 260;
+function toN8nNode(node: NodeIR, positionMap: Map<string, NodePosition>): N8nNode {
+  const layoutPosition = positionMap.get(node.key);
+  const position: [number, number] = layoutPosition
+    ? [layoutPosition.x, layoutPosition.y]
+    : (node.position ?? [0, 0]);
 
-function toN8nNode(node: NodeIR, index: number): N8nNode {
   const n8nNode: N8nNode = {
     name: node.key,
     type: node.n8nType,
     typeVersion: node.typeVersion,
-    position: node.position ?? [DEFAULT_POSITION_X_SPACING * index, 0],
+    position,
     parameters: transformParameters(node.n8nType, node.typeVersion, node.parameters as JsonObject),
   };
 

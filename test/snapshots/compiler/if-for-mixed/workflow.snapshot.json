@@ -117,7 +117,7 @@
       "parameters": {},
       "position": [
         0,
-        0
+        240
       ],
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1
@@ -146,8 +146,8 @@
         "options": {}
       },
       "position": [
-        260,
-        0
+        224,
+        240
       ],
       "type": "n8n-nodes-base.if",
       "typeVersion": 2
@@ -158,8 +158,8 @@
         "scope": "outer-true"
       },
       "position": [
-        520,
-        0
+        448,
+        144
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 1
@@ -168,8 +168,8 @@
       "name": "splitInBatches_4",
       "parameters": {},
       "position": [
-        780,
-        0
+        672,
+        144
       ],
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3
@@ -198,8 +198,8 @@
         "options": {}
       },
       "position": [
-        1040,
-        0
+        896,
+        96
       ],
       "type": "n8n-nodes-base.if",
       "typeVersion": 2
@@ -208,7 +208,7 @@
       "name": "noOp_6",
       "parameters": {},
       "position": [
-        1300,
+        1120,
         0
       ],
       "type": "n8n-nodes-base.noOp",
@@ -220,8 +220,8 @@
         "scope": "inner-false"
       },
       "position": [
-        1560,
-        0
+        1120,
+        192
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 1
@@ -230,8 +230,8 @@
       "name": "noOp_8",
       "parameters": {},
       "position": [
-        1820,
-        0
+        672,
+        384
       ],
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1
@@ -242,8 +242,8 @@
         "scope": "completed"
       },
       "position": [
-        2080,
-        0
+        896,
+        336
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 1
