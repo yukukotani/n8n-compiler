@@ -203,6 +203,37 @@ test("lowerControlFlowGraphToIR は splitOut を n8n splitout ノードに lower
   ]);
 });
 
+test("lowerControlFlowGraphToIR は summarize を n8n summarize ノードに lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.summarize({ fieldsToSummarize: ["content"] });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual(["manualTrigger_1", "summarize_2"]);
+  expect(workflow.nodes[1]).toEqual(
+    expect.objectContaining({
+      key: "summarize_2",
+      n8nType: "n8n-nodes-base.summarize",
+      parameters: { fieldsToSummarize: ["content"] },
+    }),
+  );
+
+  expect(workflow.edges).toEqual([
+    {
+      from: "manualTrigger_1",
+      fromOutputIndex: 0,
+      to: "summarize_2",
+      toInputIndex: 0,
+      kind: undefined,
+    },
+  ]);
+});
+
 test("lowerControlFlowGraphToIR は merge を n8n merge ノードに lowering する", () => {
   const workflow = lowerFromSource(`
     export default workflow({

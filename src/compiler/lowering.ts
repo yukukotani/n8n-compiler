@@ -51,6 +51,7 @@ const NODE_TYPE_BY_KIND = {
   sort: "n8n-nodes-base.sort",
   splitOut: "n8n-nodes-base.splitout",
   switch: "n8n-nodes-base.switch",
+  summarize: "n8n-nodes-base.summarize",
   set: "n8n-nodes-base.set",
   wait: "n8n-nodes-base.wait",
   noOp: "n8n-nodes-base.noOp",

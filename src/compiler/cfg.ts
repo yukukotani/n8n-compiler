@@ -27,6 +27,7 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "sort",
   "splitOut",
   "switch",
+  "summarize",
   "set",
   "wait",
   "noOp",

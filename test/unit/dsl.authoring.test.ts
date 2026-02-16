@@ -204,6 +204,24 @@ test("switch を ActionNode として定義できる", () => {
   expect(definition.name).toBe("switch-workflow");
 });
 
+test("summarize を ActionNode として定義できる", () => {
+  const node = n.summarize({ fieldsToSummarize: ["content"] });
+
+  expect(node.__brand).toBe("NodeRef");
+  expect(node.kind).toBe("summarize");
+  expect(node.params).toEqual({ fieldsToSummarize: ["content"] });
+
+  const definition = workflow({
+    name: "summarize-workflow",
+    triggers: [n.manualTrigger()],
+    execute() {
+      n.summarize({ fieldsToSummarize: ["content"] });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("summarize-workflow");
+});
+
 test("merge を ActionNode として定義できる", () => {
   const node = n.merge({ mode: "append" });
 

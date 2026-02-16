@@ -329,6 +329,37 @@ test("compile は splitOut を n8n splitout ノードとしてコンパイルす
   expect(result.workflow.nodes[1]?.parameters).toEqual({ fieldToSplitOut: "items" });
 });
 
+test("compile は summarize を n8n summarize ノードとしてコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "summarize-compile",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.summarize({ fieldsToSummarize: ["content"] });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "summarize.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual(["manualTrigger_1", "summarize_2"]);
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.summarize");
+  expect(result.workflow.nodes[1]?.parameters).toEqual({
+    fieldsToSummarize: ["content"],
+  });
+});
+
 test("compile は merge を n8n merge ノードとしてコンパイルする", () => {
   const sourceText = `
     export default workflow({

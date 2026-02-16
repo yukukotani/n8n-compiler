@@ -76,6 +76,10 @@ export const n = {
     return createNodeRef("switch", params);
   },
 
+  summarize(params: NodeParams): NodeRef<"summarize"> {
+    return createNodeRef("summarize", params);
+  },
+
   set(params: NodeParams): NodeRef<"set"> {
     return createNodeRef("set", params);
   },

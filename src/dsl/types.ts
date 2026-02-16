@@ -74,6 +74,7 @@ export type NodeKind =
   | "sort"
   | "splitOut"
   | "switch"
+  | "summarize"
   | "set"
   | "wait"
   | "noOp";
