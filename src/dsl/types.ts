@@ -2,7 +2,7 @@ export type JsonObject = Record<string, unknown>;
 
 export type WorkflowSettings = JsonObject;
 
-export type WorkflowExecute = () => void | Promise<void>;
+export type WorkflowExecute = (...triggers: NodeRef<TriggerNodeKind>[]) => void | Promise<void>;
 
 export type ExpressionValue = `={{${string}}}`;
 

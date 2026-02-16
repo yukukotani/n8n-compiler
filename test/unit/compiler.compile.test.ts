@@ -1094,8 +1094,108 @@ test("compile は面接ブロック相当のワークフローをコンパイル
   expect(workTask?.type).toBe("n8n-nodes-base.httpRequest");
   expect(workTask?.typeVersion).toBe(4.2);
 
-  // all-day blocker is googleCalendar
+   // all-day blocker is googleCalendar
   const blocker = result.workflow.nodes.find((n) => n.name === "all-day blocker");
   expect(blocker?.type).toBe("n8n-nodes-base.googleCalendar");
   expect(blocker?.typeVersion).toBe(1.3);
+});
+
+test("compile は execute パラメータでトリガー出力を参照できる", () => {
+  const sourceText = `
+    export default workflow({
+      name: "trigger-ref",
+      settings: {},
+      triggers: [n.webhookTrigger({ path: "incoming", httpMethod: "POST" })],
+      execute(trigger) {
+        n.set({ values: { body: trigger.body, path: trigger.headers["x-path"] } });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "trigger-ref.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  // Trigger node name should be "trigger" (matching the execute param name)
+  expect(result.workflow.nodes[0]?.name).toBe("trigger");
+
+  // Set node should have n8n expressions referencing the trigger
+  const setNode = result.workflow.nodes[1];
+  expect(setNode?.parameters).toEqual({
+    values: {
+      string: [
+        { name: "body", value: '={{$node["trigger"].json.body}}' },
+        { name: "path", value: '={{$node["trigger"].json.headers["x-path"]}}' },
+      ],
+    },
+  });
+
+  // Connection should use trigger's variable name
+  expect(result.workflow.connections.trigger).toEqual({
+    main: [[{ node: "set_2", type: "main", index: 0 }]],
+  });
+});
+
+test("compile は複数トリガーの execute パラメータ参照を正しく処理する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "multi-trigger",
+      settings: {},
+      triggers: [
+        n.manualTrigger(),
+        n.scheduleTrigger({ schedules: [{ type: "minutes", intervalMinutes: 5 }] }),
+      ],
+      execute(manual, schedule) {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "multi.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes[0]?.name).toBe("manual");
+  expect(result.workflow.nodes[1]?.name).toBe("schedule");
+});
+
+test("compile は execute パラメータ数がトリガー数を超えるとエラーにする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "too-many-params",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute(a, b) {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "bad.ts",
+    sourceText,
+  });
+
+  expect(result.workflow).toBeNull();
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({
+      code: "E_INVALID_WORKFLOW_SCHEMA",
+    }),
+  );
 });

@@ -221,6 +221,98 @@ test("buildControlFlowGraph は switch の fallthrough を diagnostics に変換
   );
 });
 
+test("buildControlFlowGraph は triggerVariableNames をパラメータ内ノード参照として扱う", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.webhookTrigger()],
+      execute(trigger) {
+        n.set({ values: { body: trigger.body, id: trigger.body.id } });
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute, ["trigger"]);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const setStatement = cfgResult.cfg.body[0];
+  expect(setStatement?.type).toBe("NodeCall");
+  if (setStatement?.type === "NodeCall") {
+    expect(setStatement.call.parameters).toEqual({
+      values: {
+        body: '={{$node["trigger"].json.body}}',
+        id: '={{$node["trigger"].json.body.id}}',
+      },
+    });
+  }
+});
+
+test("buildControlFlowGraph は triggerVariableNames を if 条件内のノード参照として扱う", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.webhookTrigger()],
+      execute(trigger) {
+        if (trigger.body.ok == true) {
+          n.noOp();
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute, ["trigger"]);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const ifStatement = cfgResult.cfg.body[0];
+  expect(ifStatement?.type).toBe("If");
+  if (ifStatement?.type === "If") {
+    expect(ifStatement.test).toEqual({
+      type: "ExprCall",
+      expression: '={{$node["trigger"].json.body.ok == true}}',
+    });
+  }
+});
+
 test("buildControlFlowGraph は if 条件で前ノード参照式をそのまま書ける", () => {
   const sourceText = `
     export default workflow({

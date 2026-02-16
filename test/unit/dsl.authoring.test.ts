@@ -501,3 +501,35 @@ test("ノードオプション (credentials/name) を渡せる", () => {
   expect(node.__brand).toBe("NodeRef");
   expect(node.kind).toBe("httpRequest");
 });
+
+test("execute パラメータでトリガー出力を参照する型が使える", () => {
+  const definition = workflow({
+    name: "trigger-ref-authoring",
+    triggers: [n.webhookTrigger({ path: "incoming" })],
+    execute(trigger) {
+      // trigger.body should be accessible without type error (NodeRef has index signature)
+      void trigger.body;
+      void trigger.headers;
+      n.set({ values: { body: trigger.body } });
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("trigger-ref-authoring");
+});
+
+test("execute パラメータで複数トリガー出力を参照する型が使える", () => {
+  const definition = workflow({
+    name: "multi-trigger-ref",
+    triggers: [
+      n.manualTrigger(),
+      n.webhookTrigger({ path: "incoming" }),
+    ],
+    execute(manual, webhook) {
+      void manual;
+      void webhook.body;
+      n.noOp();
+    },
+  }) satisfies WorkflowDefinition;
+
+  expect(definition.name).toBe("multi-trigger-ref");
+});

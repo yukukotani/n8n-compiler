@@ -22,6 +22,7 @@ export type TriggerInput = {
   credentials?: Record<string, { id: string; name?: string }>;
   name?: string;
   position?: [number, number];
+  variableName?: string;
 };
 
 type LowerControlFlowGraphToIRInput = {
@@ -102,6 +103,7 @@ function appendTriggers(triggers: TriggerInput[], context: LoweringContext): voi
       credentials: trigger.credentials,
       position: trigger.position,
       displayName: trigger.name,
+      variableName: trigger.variableName,
     });
 
     context.workflow.nodes.push(node);

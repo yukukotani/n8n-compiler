@@ -1012,3 +1012,54 @@ test("lowerControlFlowGraphToIR は for..of n.loop() を splitInBatches と back
     kind: undefined,
   });
 });
+
+test("lowerControlFlowGraphToIR は trigger の variableName をノードキーとして使う", () => {
+  const workflow = lowerControlFlowGraphToIR({
+    name: "sample",
+    triggers: [{ kind: "webhookTrigger", parameters: { path: "incoming" }, variableName: "trigger" }],
+    cfg: { type: "Block", body: [] },
+  });
+
+  expect(workflow.nodes[0]?.key).toBe("trigger");
+  expect(workflow.nodes[0]?.n8nType).toBe("n8n-nodes-base.webhook");
+});
+
+test("lowerControlFlowGraphToIR は複数 trigger に variableName を反映しフロンティアから接続する", () => {
+  const workflow = lowerControlFlowGraphToIR({
+    name: "sample",
+    triggers: [
+      { kind: "manualTrigger", parameters: {}, variableName: "manual" },
+      { kind: "scheduleTrigger", parameters: {}, variableName: "schedule" },
+    ],
+    cfg: {
+      type: "Block",
+      body: [
+        {
+          type: "NodeCall",
+          call: { kind: "noOp", parameters: {} },
+        },
+      ],
+    },
+  });
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manual",
+    "schedule",
+    "noOp_3",
+  ]);
+
+  expectEdge(workflow, {
+    from: "manual",
+    fromOutputIndex: 0,
+    to: "noOp_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "schedule",
+    fromOutputIndex: 0,
+    to: "noOp_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+});

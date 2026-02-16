@@ -153,11 +153,12 @@ type DslCall = {
 export function buildControlFlowGraph(
   file: string,
   execute: Expression,
+  triggerVariableNames?: string[],
 ): BuildControlFlowGraphResult {
   const context: BuildContext = {
     file,
     diagnostics: [],
-    nodeVariables: new Set(),
+    nodeVariables: new Set(triggerVariableNames ?? []),
   };
   const executeBody = pickExecuteBody(execute, context);
   const body = buildStatements(executeBody, context);

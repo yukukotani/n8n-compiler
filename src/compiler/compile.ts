@@ -82,8 +82,22 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  const triggerVarNames = extractExecuteParamNames(entry.execute);
+  if (triggerVarNames.length > triggers.length) {
+    diagnostics.push(
+      createErrorDiagnostic({
+        code: "E_INVALID_WORKFLOW_SCHEMA",
+        message: `execute function has ${triggerVarNames.length} parameter(s) but only ${triggers.length} trigger(s) defined`,
+        file: input.file,
+        start: entry.execute.start,
+        end: entry.execute.end,
+      }),
+    );
+    return { workflow: null, diagnostics };
+  }
+
   const cfg = runStage(diagnostics, () => {
-    const cfgResult = buildControlFlowGraph(input.file, entry.execute);
+    const cfgResult = buildControlFlowGraph(input.file, entry.execute, triggerVarNames);
     return {
       value: cfgResult.cfg,
       diagnostics: cfgResult.diagnostics,
@@ -93,9 +107,14 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  const triggersWithVarNames = triggers.map((trigger, i) => ({
+    ...trigger,
+    ...(triggerVarNames[i] != null && { variableName: triggerVarNames[i] }),
+  }));
+
   const workflowIR = lowerControlFlowGraphToIR({
     name: metadata.name,
-    triggers,
+    triggers: triggersWithVarNames,
     cfg,
   });
   workflowIR.settings = metadata.settings;
@@ -208,6 +227,25 @@ function toN8nNode(node: NodeIR, positionMap: Map<string, NodePosition>): N8nNod
   }
 
   return n8nNode;
+}
+
+type ExecuteParam = { type: string; name?: string };
+
+function extractExecuteParamNames(execute: Expression): string[] {
+  if (execute.type !== "FunctionExpression" && execute.type !== "ArrowFunctionExpression") {
+    return [];
+  }
+
+  const params = (execute as unknown as { params: ExecuteParam[] }).params;
+  const names: string[] = [];
+
+  for (const param of params) {
+    if (param.type === "Identifier" && param.name) {
+      names.push(param.name);
+    }
+  }
+
+  return names;
 }
 
 function parseWorkflowName(expression: Expression): string | null {
