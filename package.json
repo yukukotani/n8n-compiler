@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.4",
+    "n8n-workflow": "^2.8.0",
     "oxc-parser": "^0.112.0"
   }
 }

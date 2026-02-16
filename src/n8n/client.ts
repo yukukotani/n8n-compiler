@@ -1,24 +1,38 @@
 import { createErrorDiagnostic, type Diagnostic, type DiagnosticCode } from "../compiler/diagnostics";
+import type { IConnections, INode, IWorkflowSettings } from "n8n-workflow";
 
 const API_BASE_PATH = "/api/v1";
 const DEFAULT_DIAGNOSTIC_FILE = "n8n/api";
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+export type N8nWorkflowNode = Omit<INode, "parameters" | "credentials"> & {
+  parameters: Record<string, unknown>;
+  credentials?: Record<string, { id: string; name?: string }>;
+};
+
+export type N8nWorkflowNodeDraft = Omit<N8nWorkflowNode, "id">;
+
+type N8nWorkflowSettings = IWorkflowSettings & Record<string, unknown>;
+
 export type N8nWorkflowPayload = {
   name: string;
-  nodes: unknown[];
-  connections: Record<string, unknown>;
-  settings: Record<string, unknown>;
+  nodes: N8nWorkflowNode[];
+  connections: IConnections;
+  settings: N8nWorkflowSettings;
+};
+
+export type N8nWorkflowDraftPayload = Omit<N8nWorkflowPayload, "nodes"> & {
+  nodes: N8nWorkflowNodeDraft[];
 };
 
 export type N8nWorkflow = {
   id?: string;
   name: string;
   active?: boolean;
-  nodes: unknown[];
-  connections: Record<string, unknown>;
-  settings: Record<string, unknown>;
+  nodes: N8nWorkflowNode[];
+  connections: IConnections;
+  settings: N8nWorkflowSettings;
 };
 
 export type N8nClientOptions = {

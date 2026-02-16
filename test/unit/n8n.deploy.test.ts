@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { N8nWorkflow, N8nWorkflowPayload } from "../../src/n8n/client";
+import type { N8nWorkflow, N8nWorkflowDraftPayload, N8nWorkflowPayload } from "../../src/n8n/client";
 import { deployWorkflow } from "../../src/n8n/deploy";
 
 type ClientLike = {
@@ -64,6 +64,39 @@ test("mode=create は createWorkflow を呼ぶ", async () => {
   expect(calls.listWorkflows).toHaveLength(0);
   expect(result.workflow).toEqual(createResult);
   expect(result.operation).toBe("create");
+});
+
+test("deploy 時に node id を name から自動付与する", async () => {
+  const { client, calls } = createClientMock();
+  const payload: N8nWorkflowDraftPayload = {
+    name: "sample",
+    nodes: [
+      {
+        name: "set_1",
+        type: "n8n-nodes-base.set",
+        typeVersion: 1,
+        position: [120, 200],
+        parameters: { value: "ok" },
+      },
+    ],
+    connections: {},
+    settings: {},
+  };
+
+  await deployWorkflow({
+    client,
+    mode: "create",
+    workflow: payload,
+  });
+
+  expect(calls.createWorkflow[0]).toMatchObject({
+    nodes: [
+      expect.objectContaining({
+        id: "set_1",
+        name: "set_1",
+      }),
+    ],
+  });
 });
 
 test("mode=update は id 必須で updateWorkflow を呼ぶ", async () => {

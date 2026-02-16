@@ -1,4 +1,10 @@
-import type { N8nWorkflow, N8nWorkflowPayload } from "./client";
+import type {
+  N8nWorkflow,
+  N8nWorkflowDraftPayload,
+  N8nWorkflowNode,
+  N8nWorkflowNodeDraft,
+  N8nWorkflowPayload,
+} from "./client";
 
 export type DeployMode = "create" | "update" | "upsert";
 
@@ -11,7 +17,7 @@ export type DeployClient = {
 
 export type DeployInput = {
   client: DeployClient;
-  workflow: N8nWorkflowPayload;
+  workflow: N8nWorkflowDraftPayload;
   mode?: DeployMode;
   id?: string;
   activate?: boolean;
@@ -26,7 +32,10 @@ export type DeployResult = {
 export async function deployWorkflow(input: DeployInput): Promise<DeployResult> {
   const mode = input.mode ?? "upsert";
   const operation = createOperation(mode);
-  const deployed = await operation(input);
+  const deployed = await operation({
+    ...input,
+    workflow: withNodeIds(input.workflow),
+  });
 
   const activated = Boolean(input.activate);
   if (activated) {
@@ -45,7 +54,11 @@ export async function deployWorkflow(input: DeployInput): Promise<DeployResult> 
   };
 }
 
-type DeployOperation = (input: DeployInput) => Promise<{ workflow: N8nWorkflow; operation: "create" | "update" }>;
+type DeployOperationInput = Omit<DeployInput, "workflow"> & { workflow: N8nWorkflowPayload };
+
+type DeployOperation = (
+  input: DeployOperationInput,
+) => Promise<{ workflow: N8nWorkflow; operation: "create" | "update" }>;
 
 const deployOperations: Record<DeployMode, DeployOperation> = {
   create: async (input) => ({
@@ -90,4 +103,23 @@ function requireWorkflowId(id: string | undefined, mode: DeployMode): string {
 async function findWorkflowByName(client: DeployClient, name: string): Promise<N8nWorkflow | undefined> {
   const workflows = await client.listWorkflows({ name });
   return workflows.find((workflow) => workflow.name === name);
+}
+
+function withNodeIds(workflow: N8nWorkflowDraftPayload): N8nWorkflowPayload {
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((node, index) => ({
+      ...node,
+      id: toNodeId(node, index),
+    })),
+  };
+}
+
+function toNodeId(node: N8nWorkflowNodeDraft, index: number): N8nWorkflowNode["id"] {
+  const name = node.name.trim();
+  if (name.length > 0) {
+    return name;
+  }
+
+  return `node_${index + 1}`;
 }
