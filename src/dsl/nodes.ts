@@ -12,10 +12,10 @@ import type {
 
 const LOOP_SOURCE: LoopToken[] = [];
 
-function createNodeRef<Kind extends NodeKind, Params extends NodeParamsOf<Kind>>(
-  kind: Kind,
-  params: Params,
-): NodeRef<Kind, Params> {
+function createNodeRef<
+  Kind extends NodeKind,
+  Params extends NodeParamsOf<Kind>,
+>(kind: Kind, params: Params): NodeRef<Kind, Params> {
   return {
     __brand: "NodeRef",
     kind,
@@ -24,27 +24,45 @@ function createNodeRef<Kind extends NodeKind, Params extends NodeParamsOf<Kind>>
 }
 
 export const n = {
-  manualTrigger(params: NodeParamsOf<"manualTrigger"> = {}, _options?: NodeOptions): NodeRef<"manualTrigger"> {
+  manualTrigger(
+    params: NodeParamsOf<"manualTrigger"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"manualTrigger"> {
     return createNodeRef("manualTrigger", params);
   },
 
-  scheduleTrigger(params: NodeParamsOf<"scheduleTrigger">, _options?: NodeOptions): NodeRef<"scheduleTrigger"> {
+  scheduleTrigger(
+    params: NodeParamsOf<"scheduleTrigger">,
+    _options?: NodeOptions,
+  ): NodeRef<"scheduleTrigger"> {
     return createNodeRef("scheduleTrigger", params);
   },
 
-  webhookTrigger(params: NodeParamsOf<"webhookTrigger"> = {}, _options?: NodeOptions): NodeRef<"webhookTrigger"> {
+  webhookTrigger(
+    params: NodeParamsOf<"webhookTrigger"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"webhookTrigger"> {
     return createNodeRef("webhookTrigger", params);
   },
 
-  googleCalendarTrigger(params: NodeParamsOf<"googleCalendarTrigger"> = {}, _options?: NodeOptions): NodeRef<"googleCalendarTrigger"> {
+  googleCalendarTrigger(
+    params: NodeParamsOf<"googleCalendarTrigger"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"googleCalendarTrigger"> {
     return createNodeRef("googleCalendarTrigger", params);
   },
 
-  httpRequest(params: NodeParamsOf<"httpRequest">, _options?: NodeOptions): NodeRef<"httpRequest"> {
+  httpRequest(
+    params: NodeParamsOf<"httpRequest">,
+    _options?: NodeOptions,
+  ): NodeRef<"httpRequest"> {
     return createNodeRef("httpRequest", params);
   },
 
-  executeWorkflow(params: NodeParamsOf<"executeWorkflow">, _options?: NodeOptions): NodeRef<"executeWorkflow"> {
+  executeWorkflow(
+    params: NodeParamsOf<"executeWorkflow">,
+    _options?: NodeOptions,
+  ): NodeRef<"executeWorkflow"> {
     return createNodeRef("executeWorkflow", params);
   },
 
@@ -52,27 +70,45 @@ export const n = {
     return createNodeRef("code", params);
   },
 
-  aggregate(params: NodeParamsOf<"aggregate">, _options?: NodeOptions): NodeRef<"aggregate"> {
+  aggregate(
+    params: NodeParamsOf<"aggregate">,
+    _options?: NodeOptions,
+  ): NodeRef<"aggregate"> {
     return createNodeRef("aggregate", params);
   },
 
-  filter(params: NodeParamsOf<"filter">, _options?: NodeOptions): NodeRef<"filter"> {
+  filter(
+    params: NodeParamsOf<"filter">,
+    _options?: NodeOptions,
+  ): NodeRef<"filter"> {
     return createNodeRef("filter", params);
   },
 
-  limit(params: NodeParamsOf<"limit">, _options?: NodeOptions): NodeRef<"limit"> {
+  limit(
+    params: NodeParamsOf<"limit">,
+    _options?: NodeOptions,
+  ): NodeRef<"limit"> {
     return createNodeRef("limit", params);
   },
 
-  merge(params: NodeParamsOf<"merge">, _options?: NodeOptions): NodeRef<"merge"> {
+  merge(
+    params: NodeParamsOf<"merge">,
+    _options?: NodeOptions,
+  ): NodeRef<"merge"> {
     return createNodeRef("merge", params);
   },
 
-  removeDuplicates(params: NodeParamsOf<"removeDuplicates">, _options?: NodeOptions): NodeRef<"removeDuplicates"> {
+  removeDuplicates(
+    params: NodeParamsOf<"removeDuplicates">,
+    _options?: NodeOptions,
+  ): NodeRef<"removeDuplicates"> {
     return createNodeRef("removeDuplicates", params);
   },
 
-  respondToWebhook(params: NodeParamsOf<"respondToWebhook">, _options?: NodeOptions): NodeRef<"respondToWebhook"> {
+  respondToWebhook(
+    params: NodeParamsOf<"respondToWebhook">,
+    _options?: NodeOptions,
+  ): NodeRef<"respondToWebhook"> {
     return createNodeRef("respondToWebhook", params);
   },
 
@@ -80,15 +116,24 @@ export const n = {
     return createNodeRef("sort", params);
   },
 
-  splitOut(params: NodeParamsOf<"splitOut">, _options?: NodeOptions): NodeRef<"splitOut"> {
+  splitOut(
+    params: NodeParamsOf<"splitOut">,
+    _options?: NodeOptions,
+  ): NodeRef<"splitOut"> {
     return createNodeRef("splitOut", params);
   },
 
-  switch(params: NodeParamsOf<"switch">, _options?: NodeOptions): NodeRef<"switch"> {
+  switch(
+    params: NodeParamsOf<"switch">,
+    _options?: NodeOptions,
+  ): NodeRef<"switch"> {
     return createNodeRef("switch", params);
   },
 
-  summarize(params: NodeParamsOf<"summarize">, _options?: NodeOptions): NodeRef<"summarize"> {
+  summarize(
+    params: NodeParamsOf<"summarize">,
+    _options?: NodeOptions,
+  ): NodeRef<"summarize"> {
     return createNodeRef("summarize", params);
   },
 
@@ -100,11 +145,17 @@ export const n = {
     return createNodeRef("wait", params);
   },
 
-  noOp(params: NodeParamsOf<"noOp"> = {}, _options?: NodeOptions): NodeRef<"noOp"> {
+  noOp(
+    params: NodeParamsOf<"noOp"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"noOp"> {
     return createNodeRef("noOp", params);
   },
 
-  googleCalendar(params: NodeParamsOf<"googleCalendar">, _options?: NodeOptions): NodeRef<"googleCalendar"> {
+  googleCalendar(
+    params: NodeParamsOf<"googleCalendar">,
+    _options?: NodeOptions,
+  ): NodeRef<"googleCalendar"> {
     return createNodeRef("googleCalendar", params);
   },
 

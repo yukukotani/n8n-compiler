@@ -1,5 +1,6 @@
 import {
   parseSync as oxcParseSync,
+  type Comment,
   type OxcError,
   type ParserOptions,
   type Program,
@@ -15,6 +16,7 @@ const PARSE_OPTIONS = {
 
 export type ParseSyncResult = {
   program: Program | null;
+  comments: Comment[];
   diagnostics: Diagnostic[];
 };
 
@@ -24,16 +26,18 @@ export function parseSync(file: string, sourceText: string): ParseSyncResult {
     const diagnostics = toParseDiagnostics(file, parseResult.errors);
 
     if (diagnostics.length > 0) {
-      return { program: null, diagnostics };
+      return { program: null, comments: [], diagnostics };
     }
 
     return {
       program: parseResult.program,
+      comments: parseResult.comments,
       diagnostics: [],
     };
   } catch (error) {
     return {
       program: null,
+      comments: [],
       diagnostics: [toUnexpectedParseDiagnostic(file, error)],
     };
   }

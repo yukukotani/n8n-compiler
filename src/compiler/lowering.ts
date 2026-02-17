@@ -123,10 +123,10 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
       lowerStatements(statement.body, context);
       return;
     case "NodeCall":
-      appendNode(statement.call, context);
+      appendNode(statement.call, context, undefined, statement.displayName);
       return;
     case "Variable":
-      appendNode(statement.call, context, statement.name);
+      appendNode(statement.call, context, statement.name, statement.displayName);
       return;
     case "If":
       lowerIfStatement(statement, context);
@@ -213,6 +213,7 @@ function appendNode(
   call: CfgDslNodeCall,
   context: LoweringContext,
   variableName?: string,
+  jsDocDisplayName?: string,
 ): void {
   context.counter += 1;
   const node = createNodeIR({
@@ -224,7 +225,7 @@ function appendNode(
     parameters: call.parameters,
     credentials: call.options?.credentials,
     position: call.options?.position,
-    displayName: call.options?.name,
+    displayName: jsDocDisplayName ?? call.options?.name,
   });
 
   context.workflow.nodes.push(node);

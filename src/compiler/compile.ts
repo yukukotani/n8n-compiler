@@ -1,4 +1,4 @@
-import type { ArrayExpression, Expression } from "oxc-parser";
+import type { ArrayExpression, Comment, Expression } from "oxc-parser";
 import { TRIGGER_NODE_KINDS } from "../dsl";
 import {
   parseExpressionAsJson,
@@ -50,8 +50,10 @@ type StageResult<T> = {
 export function compile(input: CompileInput): CompileResult {
   const diagnostics: Diagnostic[] = [];
 
+  let comments: Comment[] = [];
   const program = runStage(diagnostics, () => {
     const parseResult = parseSync(input.file, input.sourceText);
+    comments = parseResult.comments;
     return {
       value: parseResult.program,
       diagnostics: parseResult.diagnostics,
@@ -97,7 +99,10 @@ export function compile(input: CompileInput): CompileResult {
   }
 
   const cfg = runStage(diagnostics, () => {
-    const cfgResult = buildControlFlowGraph(input.file, entry.execute, triggerVarNames);
+    const cfgResult = buildControlFlowGraph(input.file, entry.execute, triggerVarNames, {
+      sourceText: input.sourceText,
+      comments,
+    });
     return {
       value: cfgResult.cfg,
       diagnostics: cfgResult.diagnostics,

@@ -1,6 +1,7 @@
 import type {
   Argument,
   ArrowFunctionExpression,
+  Comment,
   Expression,
   ForOfStatement,
   Function,
@@ -55,12 +56,14 @@ export type CfgStatement =
 export type CfgNodeCallStatement = {
   type: "NodeCall";
   call: CfgDslNodeCall;
+  displayName?: string;
 };
 
 export type CfgVariableStatement = {
   type: "Variable";
   name: string;
   call: CfgDslNodeCall;
+  displayName?: string;
 };
 
 export type CfgIfStatement = {
@@ -140,6 +143,8 @@ export type BuildControlFlowGraphResult = {
 
 type BuildContext = {
   file: string;
+  sourceText: string;
+  comments: Comment[];
   diagnostics: Diagnostic[];
   nodeVariables: Set<string>;
   loopVariables: Set<string>;
@@ -156,9 +161,12 @@ export function buildControlFlowGraph(
   file: string,
   execute: Expression,
   triggerVariableNames?: string[],
+  options?: { sourceText?: string; comments?: Comment[] },
 ): BuildControlFlowGraphResult {
   const context: BuildContext = {
     file,
+    sourceText: options?.sourceText ?? "",
+    comments: options?.comments ?? [],
     diagnostics: [],
     nodeVariables: new Set(triggerVariableNames ?? []),
     loopVariables: new Set(),
@@ -282,10 +290,13 @@ function buildExpressionStatement(statement: Statement, context: BuildContext): 
     return [];
   }
 
+  const displayName = extractJSDocName(statement.start, context);
+
   return [
     {
       type: "NodeCall",
       call: nodeCall,
+      ...(displayName && { displayName }),
     },
   ];
 }
@@ -295,6 +306,7 @@ function buildVariableDeclaration(
   context: BuildContext,
 ): CfgStatement[] {
   const statements: CfgStatement[] = [];
+  const displayName = extractJSDocName(declaration.start, context);
 
   for (const declarator of declaration.declarations) {
     if (declarator.id.type !== "Identifier" || !declarator.init) {
@@ -322,6 +334,7 @@ function buildVariableDeclaration(
       type: "Variable",
       name: declarator.id.name,
       call: nodeCall,
+      ...(displayName && { displayName }),
     });
   }
 
@@ -996,6 +1009,40 @@ function parseNodeCallOptions(
   }
 
   return Object.keys(options).length > 0 ? options : undefined;
+}
+
+/**
+ * Extract `@name` value from a JSDoc block comment immediately preceding the given position.
+ *
+ * Matches `/** @name Some Display Name *​/` where only whitespace separates comment end and statement start.
+ */
+function extractJSDocName(statementStart: number, context: BuildContext): string | null {
+  // Find block comments that end before (or at) the statement start
+  // and have only whitespace between comment end and statement start.
+  for (let i = context.comments.length - 1; i >= 0; i--) {
+    const comment = context.comments[i]!;
+    if (comment.type !== "Block") {
+      continue;
+    }
+    if (comment.end > statementStart) {
+      continue;
+    }
+    // Check that only whitespace exists between comment end and statement start
+    const between = context.sourceText.slice(comment.end, statementStart);
+    if (between.trim().length > 0) {
+      // There's code between the comment and the statement; skip
+      continue;
+    }
+    // Parse @name from the comment value
+    // comment.value is the content between /* and */
+    const nameMatch = comment.value.match(/@name\s+(.+)/);
+    if (nameMatch) {
+      return nameMatch[1]!.replace(/\s*\*?\s*$/, "").trim();
+    }
+    // This is the nearest preceding comment but doesn't have @name
+    break;
+  }
+  return null;
 }
 
 function pushDiagnostic(

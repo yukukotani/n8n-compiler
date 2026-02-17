@@ -206,11 +206,9 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   lines.push("export default workflow({");
   lines.push(`  name: ${JSON.stringify(workflow.name)},`);
 
-  // Settings
+  // Settings (omit if empty)
   if (workflow.settings && Object.keys(workflow.settings).length > 0) {
     lines.push(`  settings: ${serializeObject(workflow.settings, 2)},`);
-  } else {
-    lines.push("  settings: {},");
   }
 
   // Triggers
@@ -437,12 +435,18 @@ function generateNodeCall(
     return;
   }
 
-  const params = normalizeParameters(node.type, node.typeVersion, node.parameters);
+  const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters));
   const pad = " ".repeat(indent);
   const paramsStr = serializeObject(params, indent);
 
-  // Build options (credentials, name)
-  const options = buildNodeOptions(node);
+  // Build options (credentials, name) — but use @name JSDoc for space-containing names
+  const hasSpaceInName = nodeHasSpaceName(node);
+  const options = buildNodeOptions(node, hasSpaceInName);
+
+  // Emit @name JSDoc if the node name contains spaces
+  if (hasSpaceInName) {
+    lines.push(`${pad}/** @name ${node.name} */`);
+  }
 
   if (options) {
     lines.push(`${pad}n.${node.dslKind}(${paramsStr}, ${serializeObject(options, indent)});`);
@@ -901,7 +905,7 @@ function generateTriggerCall(node: N8nNodeInput, graphNode: GraphNode): string {
     return `/* unsupported trigger: ${node.type} */`;
   }
 
-  const params = normalizeParameters(node.type, node.typeVersion, node.parameters);
+  const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters));
   const options = buildNodeOptions(graphNode);
 
   if (options) {
@@ -1006,7 +1010,7 @@ function sortNodesByPosition(
   });
 }
 
-function buildNodeOptions(node: GraphNode): JsonObject | null {
+function buildNodeOptions(node: GraphNode, suppressName = false): JsonObject | null {
   const options: JsonObject = {};
 
   if (node.credentials && Object.keys(node.credentials).length > 0) {
@@ -1014,7 +1018,8 @@ function buildNodeOptions(node: GraphNode): JsonObject | null {
   }
 
   // Only set name option if it's not auto-generated (dslKind_N pattern)
-  if (node.dslKind) {
+  // and not suppressed (when using @name JSDoc instead)
+  if (!suppressName && node.dslKind) {
     const autoNamePattern = new RegExp(`^${node.dslKind}_\\d+$`);
     if (!autoNamePattern.test(node.name)) {
       options.name = node.name;
@@ -1022,6 +1027,41 @@ function buildNodeOptions(node: GraphNode): JsonObject | null {
   }
 
   return Object.keys(options).length > 0 ? options : null;
+}
+
+/** Returns true if the node has a custom name (not auto-generated) that contains spaces. */
+function nodeHasSpaceName(node: GraphNode): boolean {
+  if (!node.dslKind) {
+    return false;
+  }
+  const autoNamePattern = new RegExp(`^${node.dslKind}_\\d+$`);
+  if (autoNamePattern.test(node.name)) {
+    return false;
+  }
+  return node.name.includes(" ");
+}
+
+/**
+ * Recursively remove empty `options: {}` from parameters.
+ */
+function stripEmptyOptions(params: JsonObject): JsonObject {
+  const result: JsonObject = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "options" && isEmptyObject(value)) {
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function isEmptyObject(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  );
 }
 
 function isOptionalParamsNode(dslKind: string): boolean {

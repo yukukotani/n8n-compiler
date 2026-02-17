@@ -142,7 +142,8 @@ describe("generateWorkflowCode", () => {
 
     const result = generateWorkflowCode(workflow);
     expect(result.errors).toEqual([]);
-    expect(result.code).toContain('"my request"');
+    // Space-containing names use @name JSDoc instead of options.name
+    expect(result.code).toContain("/** @name my request */");
     expect(result.code).toContain('"cred-1"');
   });
 
@@ -341,5 +342,150 @@ describe("ラウンドトリップ: generate → compile", () => {
 
     const nodeTypes = compileResult.workflow!.nodes.map((n) => n.type);
     expect(nodeTypes).toContain("n8n-nodes-base.splitInBatches");
+  });
+
+  test("@name JSDoc 付きノードのラウンドトリップ", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-jsdoc-name",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "my request",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com" },
+          credentials: { httpBasicAuth: { id: "cred-1", name: "My Auth" } },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "my request", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).toContain("/** @name my request */");
+    expect(genResult.code).not.toContain('name: "my request"');
+
+    const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const httpNode = compileResult.workflow!.nodes[1];
+    expect(httpNode?.name).toBe("my request");
+    expect(httpNode?.credentials).toEqual({
+      httpBasicAuth: { id: "cred-1", name: "My Auth" },
+    });
+  });
+});
+
+describe("生成改善", () => {
+  test("空の settings は省略される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "empty-settings",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "noOp_2", type: "n8n-nodes-base.noOp", typeVersion: 1, parameters: {}, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "noOp_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toContain("settings:");
+  });
+
+  test("非空の settings は出力される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "nonempty-settings",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "noOp_2", type: "n8n-nodes-base.noOp", typeVersion: 1, parameters: {}, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "noOp_2", type: "main", index: 0 }]] },
+      },
+      settings: { timezone: "Asia/Tokyo" },
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).toContain("settings:");
+    expect(result.code).toContain("Asia/Tokyo");
+  });
+
+  test("パラメータ内の空 options は削除される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "empty-options",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com", options: {} }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Should not contain options: {} in the httpRequest call
+    expect(result.code).not.toMatch(/options:\s*\{\s*\}/);
+  });
+
+  test("スペースを含むノード名は @name JSDoc で出力される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "space-name",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "work task",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "POST", url: "https://example.com" },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "work task", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).toContain("/** @name work task */");
+    // name should NOT be in options
+    expect(result.code).not.toContain('name: "work task"');
+  });
+
+  test("スペースなしのカスタム名は options.name で出力される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-space-name",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "myRequest",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com" },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "myRequest", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toContain("/** @name");
+    expect(result.code).toContain('name: "myRequest"');
   });
 });
