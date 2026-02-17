@@ -12,7 +12,7 @@ export default workflow({
       url: "https://example.com/api/page/1",
     });
 
-    for (const page of n.loop({ batchSize: 1 })) {
+    for (const page of firstPage.data.pages) {
       n.httpRequest({
         method: "GET",
         url: "={{$json.nextUrl}}",

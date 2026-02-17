@@ -1013,6 +1013,63 @@ test("lowerControlFlowGraphToIR は for..of n.loop() を splitInBatches と back
   });
 });
 
+test("lowerControlFlowGraphToIR は for..of ノード参照を splitInBatches と back-edge に lowering する", () => {
+  const workflow = lowerFromSource(`
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const list = n.httpRequest({ method: "GET", url: "https://example.com/items" });
+
+        for (const item of list.data) {
+          n.noOp();
+        }
+
+        n.set({ value: "done" });
+      },
+    });
+  `);
+
+  expect(workflow.nodes.map((node) => node.key)).toEqual([
+    "manualTrigger_1",
+    "list",
+    "splitInBatches_3",
+    "noOp_4",
+    "set_5",
+  ]);
+
+  expect(workflow.edges).toHaveLength(5);
+  expectEdge(workflow, {
+    from: "manualTrigger_1",
+    fromOutputIndex: 0,
+    to: "list",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "list",
+    fromOutputIndex: 0,
+    to: "splitInBatches_3",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectEdge(workflow, {
+    from: "splitInBatches_3",
+    fromOutputIndex: 1,
+    to: "noOp_4",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+  expectLoopBackEdge(workflow, "noOp_4", "splitInBatches_3");
+  expectEdge(workflow, {
+    from: "splitInBatches_3",
+    fromOutputIndex: 0,
+    to: "set_5",
+    toInputIndex: 0,
+    kind: undefined,
+  });
+});
+
 test("lowerControlFlowGraphToIR は trigger の variableName をノードキーとして使う", () => {
   const workflow = lowerControlFlowGraphToIR({
     name: "sample",

@@ -70,13 +70,14 @@ export type CfgIfStatement = {
   alternate: CfgStatement[];
 };
 
+export type CfgForOfSource =
+  | { type: "LoopCall"; options: Expression | null }
+  | { type: "NodeRef" };
+
 export type CfgForOfStatement = {
   type: "ForOf";
   iteratorName: string;
-  source: {
-    type: "LoopCall";
-    options: Expression | null;
-  };
+  source: CfgForOfSource;
   body: CfgStatement[];
 };
 
@@ -593,27 +594,39 @@ function buildForOfStatement(statement: ForOfStatement, context: BuildContext): 
   }
 
   const sourceCall = readDslCall(statement.right);
-  if (!sourceCall || sourceCall.name !== "loop") {
-    pushDiagnostic(context, {
-      code: "E_INVALID_LOOP_SOURCE",
-      message: "for...of source must be n.loop(...) call",
-      start: statement.right.start,
-      end: statement.right.end,
-    });
-    return [];
+  if (sourceCall?.name === "loop") {
+    return [
+      {
+        type: "ForOf",
+        iteratorName: iterator.id.name,
+        source: {
+          type: "LoopCall",
+          options: pickExpressionArgument(sourceCall.arguments[0]),
+        },
+        body: buildStatements(toStatementList(statement.body), context),
+      },
+    ];
   }
 
-  return [
-    {
-      type: "ForOf",
-      iteratorName: iterator.id.name,
-      source: {
-        type: "LoopCall",
-        options: pickExpressionArgument(sourceCall.arguments[0]),
+  const nodeRef = serializeNodeReferenceExpression(statement.right, context.nodeVariables);
+  if (nodeRef !== null) {
+    return [
+      {
+        type: "ForOf",
+        iteratorName: iterator.id.name,
+        source: { type: "NodeRef" },
+        body: buildStatements(toStatementList(statement.body), context),
       },
-      body: buildStatements(toStatementList(statement.body), context),
-    },
-  ];
+    ];
+  }
+
+  pushDiagnostic(context, {
+    code: "E_INVALID_LOOP_SOURCE",
+    message: "for...of source must be n.loop(...) or a node reference",
+    start: statement.right.start,
+    end: statement.right.end,
+  });
+  return [];
 }
 
 function buildSwitchStatement(statement: SwitchStatement, context: BuildContext): CfgStatement[] {

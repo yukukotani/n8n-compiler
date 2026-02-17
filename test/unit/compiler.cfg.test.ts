@@ -1012,6 +1012,60 @@ test("buildControlFlowGraph は execute 内の limit 呼び出しを受理する
   }
 });
 
+test("buildControlFlowGraph は for...of のソースにノード参照式を受理する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const list = n.httpRequest({ method: "GET", url: "https://example.com/items" });
+
+        for (const item of list.data) {
+          n.noOp();
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+  expect(parseResult.program).not.toBeNull();
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+  expect(entryResult.entry).not.toBeNull();
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  expect(cfgResult.cfg.body.map((statement) => statement.type)).toEqual([
+    "Variable",
+    "ForOf",
+  ]);
+
+  const forOfStatement = cfgResult.cfg.body[1];
+  expect(forOfStatement?.type).toBe("ForOf");
+  if (forOfStatement?.type === "ForOf") {
+    expect(forOfStatement.iteratorName).toBe("item");
+    expect(forOfStatement.source).toEqual({ type: "NodeRef" });
+    expect(forOfStatement.body).toHaveLength(1);
+  }
+});
+
 test("buildControlFlowGraph は非対応構文を diagnostics に変換する", () => {
   const sourceText = `
     export default workflow({

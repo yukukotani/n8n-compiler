@@ -19,7 +19,7 @@ export default workflow({
         },
       });
 
-      for (const item of n.loop({ batchSize: 1 })) {
+      for (const item of check.results) {
         const checkItem = n.httpRequest({
           method: "GET",
           url: "https://example.com/api/check-item",

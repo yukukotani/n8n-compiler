@@ -90,7 +90,7 @@ MVP サポートは次の通りです。
 - 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
 - `switch` 構文: `switch (expr) { case ...: ...; break; default: ... }`
-- ループ: `for (const item of n.loop({...})) { ... }`
+- ループ: `for (const item of list.data) { ... }` または `for (const item of n.loop({...})) { ... }`
 
 ### 非サポート/制約
 
@@ -103,7 +103,7 @@ MVP サポートは次の通りです。
 - `switch` の fallthrough は非対応（`break` が必要）
 - `for await...of` は非対応
 - `for...of` は `const` で 1 つの識別子束縛が必須
-- `for...of` の右辺は `n.loop(...)` のみ対応
+- `for...of` の右辺は `n.loop(...)` またはノード参照式（例: `list.data`）に対応
 - `return` / `while` など、MVP 対象外ステートメントは非対応
 - `workflow.name` は文字列リテラル必須
 - `workflow.settings` は JSON オブジェクトリテラル必須（省略時 `{}`）
@@ -121,7 +121,7 @@ MVP サポートは次の通りです。
 | `E_UNSUPPORTED_STATEMENT` | MVP 非対応の文、または許可されない呼び出し形式（execute 内の trigger 呼び出し含む） |
 | `E_UNSUPPORTED_IF_TEST` | `if` 条件が対応式（boolean / `n.expr(...)` / 前ノード参照式）以外 |
 | `E_UNSUPPORTED_FOR_FORM` | `for...of` の形が制約違反（`for await...of` 含む） |
-| `E_INVALID_LOOP_SOURCE` | `for...of` の右辺が `n.loop(...)` ではない |
+| `E_INVALID_LOOP_SOURCE` | `for...of` の右辺が `n.loop(...)` でもノード参照式でもない |
 | `E_UNKNOWN_NODE_CALL` | 未知の `n.<node>(...)` 呼び出し |
 | `E_INVALID_CONNECTION` | ノード配線不整合（参照不正、if/loop の配線欠落など） |
 | `E_INVALID_WORKFLOW_SCHEMA` | workflow 必須項目不備、name/settings 形式不正 |

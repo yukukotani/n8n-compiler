@@ -1199,3 +1199,60 @@ test("compile は execute パラメータ数がトリガー数を超えるとエ
     }),
   );
 });
+
+test("compile は for...of ノード参照を splitInBatches にコンパイルする", () => {
+  const sourceText = `
+    export default workflow({
+      name: "node-ref-loop",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        const list = n.httpRequest({ method: "GET", url: "https://example.com/items" });
+
+        for (const item of list.data) {
+          n.noOp();
+        }
+
+        n.set({ value: "done" });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "node-ref-loop.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "list",
+    "splitInBatches_3",
+    "noOp_4",
+    "set_5",
+  ]);
+
+  expect(result.workflow.connections).toEqual({
+    manualTrigger_1: {
+      main: [[{ node: "list", type: "main", index: 0 }]],
+    },
+    list: {
+      main: [[{ node: "splitInBatches_3", type: "main", index: 0 }]],
+    },
+    noOp_4: {
+      main: [[{ node: "splitInBatches_3", type: "main", index: 0 }]],
+    },
+    splitInBatches_3: {
+      main: [
+        [{ node: "set_5", type: "main", index: 0 }],
+        [{ node: "noOp_4", type: "main", index: 0 }],
+      ],
+    },
+  });
+});

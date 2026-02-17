@@ -27,7 +27,7 @@
     "code": "E_INVALID_LOOP_SOURCE",
     "end": 249,
     "file": "unsupported-syntax.workflow.ts",
-    "message": "for...of source must be n.loop(...) call",
+    "message": "for...of source must be n.loop(...) or a node reference",
     "severity": "error",
     "start": 244
   },
