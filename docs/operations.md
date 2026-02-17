@@ -85,6 +85,26 @@ MVP サポートは次の通りです。
   - 例: `n.httpRequest({ method: "GET", url: "..." }, { name: "my req", credentials: { httpBasicAuth: { id: "cred-1" } } })`
   - 例: `n.googleCalendarTrigger({ calendarId: "..." }, { credentials: { googleCalendarOAuth2Api: { id: "..." } } })`
 
+### execute 関数パラメータ（トリガー出力参照）
+
+`execute` 関数にパラメータを定義すると、トリガーノードの出力を参照できます。
+
+```ts
+export default workflow({
+  name: "webhook-handler",
+  triggers: [n.webhookTrigger({ path: "incoming", httpMethod: "POST" })],
+  execute(webhook) {
+    // webhook.body / webhook.headers などでトリガー出力を参照
+    if (webhook.body.action === "ping") {
+      n.respondToWebhook({ respondWith: "json", responseBody: JSON.stringify({ pong: true }) });
+    }
+  },
+});
+```
+
+- パラメータ名がトリガーノードの表示名になります（上記例では `webhook`）
+- 参照式は自動的に n8n 式 `={{ $node["webhook"].json.xxx }}` に変換されます
+
 ### execute 内のサポート構文
 
 - ブロック文: `{ ... }`
@@ -107,11 +127,61 @@ MVP サポートは次の通りです。
   - `n.noOp(...)`
   - `n.googleCalendar(...)`
 - 変数代入つきノード呼び出し: `const req = n.httpRequest(...)`
-- 並列実行（fan-out）: `n.parallel(() => { ... }, () => { ... }, ...)`
+- 並列実行（fan-out）:
+  ```ts
+  n.parallel(
+    () => { n.set({ value: "a" }); },
+    () => { n.httpRequest({ method: "GET", url: "..." }); },
+  );
+  ```
 - 条件分岐: `if (check.ok) { ... }`, `if (check.ok == true) { ... }`, `if (n.expr("={{...}}")) { ... }`
 - 条件分岐（定数枝刈り）: `if (true) { ... }`, `if (false) { ... }`
 - `switch` 構文: `switch (expr) { case ...: ...; break; default: ... }`
 - ループ: `for (const item of list.data) { ... }` または `for (const item of n.loop({...})) { ... }`
+
+### `@name` JSDoc によるノード表示名
+
+ノード呼び出しの直前に `/** @name 表示名 */` を記述すると、ノードの表示名を上書きできます。
+
+```ts
+execute() {
+  /** @name My API Request */
+  const res = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+  /** @name Log Output */
+  n.set({ values: { status: res.data } });
+}
+```
+
+- `@name` は変数代入（`const x = n.xxx(...)`）と式文（`n.xxx(...)`）の両方で使用可能
+- `options.name` よりも `@name` JSDoc が優先されます
+
+### トップレベル const 参照
+
+資格情報などの共通設定をトップレベルの `const` で定義し、複数ノードで再利用できます。
+
+```ts
+const googleCalendarOAuth2Api = { id: "cred-1", name: "Google Cal" };
+
+export default workflow({
+  name: "shared-config",
+  triggers: [
+    n.googleCalendarTrigger(
+      { calendarId: "..." },
+      { credentials: { googleCalendarOAuth2Api } },
+    ),
+  ],
+  execute() {
+    n.googleCalendar(
+      { start: "...", end: "..." },
+      { credentials: { googleCalendarOAuth2Api } },
+    );
+  },
+});
+```
+
+- shorthand property（`{ googleCalendarOAuth2Api }` 形式）もサポート
+- コンパイル時に const 値が解決されインライン化されます
 
 ### 非サポート/制約
 
