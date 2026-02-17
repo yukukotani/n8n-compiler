@@ -16,7 +16,7 @@ export default workflow({
     if (webhook.body.action === "ping") {
       n.respondToWebhook({
         respondWith: "json",
-        responseBody: '={{ JSON.stringify({ pong: true }) }}',
+        responseBody: "={{ JSON.stringify({ pong: true }) }}",
       });
     } else {
       n.httpRequest({
@@ -29,7 +29,7 @@ export default workflow({
 
       n.respondToWebhook({
         respondWith: "json",
-        responseBody: '={{ JSON.stringify({ ok: true }) }}',
+        responseBody: "={{ JSON.stringify({ ok: true }) }}",
       });
     }
   },
