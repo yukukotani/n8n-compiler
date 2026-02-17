@@ -380,6 +380,46 @@ describe("ラウンドトリップ: generate → compile", () => {
     });
   });
 
+  test("DateTime + $ を含む式のラウンドトリップ (import → compile)", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-datetime",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: {
+            start: "={{ DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 9 }) }}",
+            end: "={{ DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 19 }) }}",
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+    // Generated code should have raw DateTime expressions
+    expect(genResult.code).toContain("DateTime.fromISO(");
+
+    const compileResult = compile({ file: "roundtrip-datetime.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    // The compiled result should have the expressions wrapped in ={{...}}
+    const calNode = compileResult.workflow!.nodes[1];
+    expect(calNode?.type).toBe("n8n-nodes-base.googleCalendar");
+    // Note: single quotes in $('...') become double quotes after round-trip
+    expect(calNode?.parameters.start).toBe('={{DateTime.fromISO($("My Trigger").item.json.start.dateTime).set({ hour: 9 })}}');
+    expect(calNode?.parameters.end).toBe('={{DateTime.fromISO($("My Trigger").item.json.start.dateTime).set({ hour: 19 })}}');
+  });
+
   test("重複 credentials のラウンドトリップ (const 切り出し → compile)", () => {
     const cred = { id: "cred-1", name: "My Auth" };
     const original: N8nWorkflowInput = {
@@ -674,6 +714,68 @@ describe("生成改善", () => {
     // options: {} and additionalFields: {} should not appear in output
     expect(result.code).not.toMatch(/options:\s*\{\s*\}/);
     expect(result.code).not.toContain("additionalFields");
+  });
+
+  test("={{ ... }} の compound expression (CallExpression) は raw JS として出力される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "unwrap-expr",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: {
+            start: "={{ DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 9 }) }}",
+            end: "={{ DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 19 }) }}",
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should output raw expression without quotes
+    expect(result.code).toContain("DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 9 })");
+    expect(result.code).toContain("DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 19 })");
+    // Should NOT have ={{ ... }} wrapper
+    expect(result.code).not.toContain('"={{ DateTime');
+    // Should import DateTime and $ from DSL
+    expect(result.code).toContain("import { n, workflow, $, DateTime }");
+  });
+
+  test("={{ $json.field }} の simple expression は文字列のまま出力される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-unwrap",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "set_2",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: { value: "={{$json.field}}" },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "set_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Should stay as a string (not unwrapped)
+    expect(result.code).toContain('"={{$json.field}}"');
+    // Should not import n8n globals since none are used as raw expressions
+    expect(result.code).toContain("import { n, workflow }");
   });
 
   test("実質空の options (全値が空文字) は削除される", () => {

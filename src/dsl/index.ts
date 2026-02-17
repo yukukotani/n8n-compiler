@@ -1,6 +1,7 @@
 import type { WorkflowDefinition } from "./types";
 
 export { n } from "./nodes";
+export { DateTime, $ } from "./globals";
 export type * from "./types";
 
 export function workflow<TDefinition extends WorkflowDefinition>(

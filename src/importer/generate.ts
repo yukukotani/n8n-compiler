@@ -12,6 +12,7 @@
  *   4. Emit DSL code with proper indentation.
  */
 
+import { parseSync as oxcParseSync } from "oxc-parser";
 import { normalizeParameters } from "./normalize-params";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -123,6 +124,9 @@ let _sharedValues: Map<string, string> = new Map();
 let _sharedValueData: Map<string, unknown> = new Map();
 /** Set of shared const names actually referenced during serialization. */
 let _usedSharedValues: Set<string> = new Set();
+
+/** Set of n8n globals (DateTime, $, etc.) used by unwrapped expressions. */
+let _usedN8nGlobals: Set<string> = new Set();
 
 /**
  * Canonical JSON representation with sorted keys for consistent comparison.
@@ -239,6 +243,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   // Collect shared values for const extraction
   _sharedValues = collectSharedValues(nodeMap);
   _usedSharedValues = new Set();
+  _usedN8nGlobals = new Set();
 
   // Build adjacency
   const adjacency = buildAdjacency(workflow.connections);
@@ -309,7 +314,14 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
 
   // Assemble output
   const lines: string[] = [];
-  lines.push('import { n, workflow } from "../src/dsl";');
+
+  // Build dynamic import list based on which n8n globals were referenced
+  const imports = ["n", "workflow"];
+  // Sort for deterministic output
+  for (const name of [..._usedN8nGlobals].sort()) {
+    imports.push(name);
+  }
+  lines.push(`import { ${imports.join(", ")} } from "../src/dsl";`);
   lines.push("");
 
   // Generate const declarations for shared values (only those actually referenced)
@@ -358,6 +370,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _sharedValues = new Map();
   _sharedValueData = new Map();
   _usedSharedValues = new Set();
+  _usedN8nGlobals = new Set();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -1205,6 +1218,121 @@ function isOptionalParamsNode(dslKind: string): boolean {
   return dslKind === "manualTrigger" || dslKind === "noOp";
 }
 
+// ── Expression unwrapping ─────────────────────────────────────────────────────
+
+/**
+ * n8n expression-only globals that cannot be used as raw TS code.
+ * These are available only inside `={{...}}` at n8n runtime and have no
+ * corresponding DSL export.
+ */
+const N8N_EXPRESSION_ONLY_GLOBALS =
+  /\$(json|node|input|execution|prevNode|runIndex|workflow|now|today|jmespath)\b/;
+
+/**
+ * n8n globals that we export from the DSL as compile-time stubs.
+ */
+const N8N_DSL_GLOBALS = new Set(["DateTime", "Duration", "Interval"]);
+
+/**
+ * Compound expression AST types that the compiler can serialise back into
+ * `={{...}}` expression strings.
+ */
+const COMPOUND_EXPRESSION_TYPES = new Set([
+  "CallExpression",
+  "NewExpression",
+  "BinaryExpression",
+  "UnaryExpression",
+  "LogicalExpression",
+  "ConditionalExpression",
+]);
+
+/**
+ * Try to unwrap an n8n expression string (`={{...}}`) into raw JavaScript
+ * that the compiler can serialise back.
+ *
+ * Returns the raw JS expression body, or `null` if the value should stay
+ * as a quoted string.
+ */
+function tryUnwrapExpression(value: string): string | null {
+  if (!value.startsWith("={{") || !value.endsWith("}}")) {
+    return null;
+  }
+
+  const body = value.slice(3, -2).trim();
+  if (!body) {
+    return null;
+  }
+
+  // Don't unwrap expressions that use n8n-only globals ($json, $node, etc.)
+  if (N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
+    return null;
+  }
+
+  // Parse the body as JavaScript and check if it's a compound expression
+  if (!isCompoundJSExpression(body)) {
+    return null;
+  }
+
+  // Track which n8n globals are referenced so the import line can include them
+  trackN8nGlobals(body);
+
+  return body;
+}
+
+/**
+ * Parses a string as a JavaScript expression and returns true if the
+ * top-level AST node is a compound expression type.
+ */
+function isCompoundJSExpression(body: string): boolean {
+  try {
+    const wrapped = `const _ = (${body});`;
+    const result = oxcParseSync("expr.ts", wrapped, {
+      lang: "ts",
+      sourceType: "module",
+    });
+
+    if (result.errors.length > 0) {
+      return false;
+    }
+
+    const stmt = result.program.body[0];
+    if (!stmt || stmt.type !== "VariableDeclaration") {
+      return false;
+    }
+
+    const declarations = (stmt as { declarations: Array<{ init: { type: string; expression?: { type: string } } | null }> }).declarations;
+    const init = declarations[0]?.init;
+    if (!init) {
+      return false;
+    }
+
+    // Unwrap the parentheses we added
+    const expr = init.type === "ParenthesizedExpression" && init.expression
+      ? init.expression
+      : init;
+
+    return COMPOUND_EXPRESSION_TYPES.has(expr.type);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Scan an expression body for known n8n globals and record them.
+ */
+function trackN8nGlobals(body: string): void {
+  for (const name of N8N_DSL_GLOBALS) {
+    if (new RegExp(`\\b${name}\\b`).test(body)) {
+      _usedN8nGlobals.add(name);
+    }
+  }
+
+  // Detect $() function usage (but not $json, $node, etc.)
+  if (/\$\s*\(/.test(body)) {
+    _usedN8nGlobals.add("$");
+  }
+}
+
 // ── Serialization helpers ─────────────────────────────────────────────────────
 
 function serializeObject(obj: JsonObject, baseIndent: number): string {
@@ -1253,6 +1381,11 @@ function serializeValue(value: unknown, indent: number): string {
     return "undefined";
   }
   if (typeof value === "string") {
+    // Try to unwrap n8n expression to raw JS
+    const unwrapped = tryUnwrapExpression(value);
+    if (unwrapped !== null) {
+      return unwrapped;
+    }
     return JSON.stringify(value);
   }
   if (typeof value === "number" || typeof value === "boolean") {
