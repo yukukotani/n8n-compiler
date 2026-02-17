@@ -121,6 +121,8 @@ type LoopBackEdges = Set<string>; // encoded as "from->to"
 let _sharedValues: Map<string, string> = new Map();
 /** Reverse lookup: const name → the original value (for const declaration generation). */
 let _sharedValueData: Map<string, unknown> = new Map();
+/** Set of shared const names actually referenced during serialization. */
+let _usedSharedValues: Set<string> = new Set();
 
 /**
  * Canonical JSON representation with sorted keys for consistent comparison.
@@ -206,7 +208,11 @@ function getSharedConstName(value: unknown): string | null {
   if (_sharedValues.size === 0) return null;
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const json = canonicalJson(value);
-  return _sharedValues.get(json) ?? null;
+  const name = _sharedValues.get(json) ?? null;
+  if (name !== null) {
+    _usedSharedValues.add(name);
+  }
+  return name;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -222,7 +228,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
       name: node.name,
       type: node.type,
       typeVersion: node.typeVersion,
-      parameters: node.parameters,
+      parameters: stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters)),
       credentials: node.credentials,
       dslKind,
       isTrigger: TRIGGER_N8N_TYPES.has(node.type),
@@ -232,6 +238,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
 
   // Collect shared values for const extraction
   _sharedValues = collectSharedValues(nodeMap);
+  _usedSharedValues = new Set();
 
   // Build adjacency
   const adjacency = buildAdjacency(workflow.connections);
@@ -305,10 +312,11 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   lines.push('import { n, workflow } from "../src/dsl";');
   lines.push("");
 
-  // Generate const declarations for shared values
+  // Generate const declarations for shared values (only those actually referenced)
   if (_sharedValues.size > 0) {
-    // Sort by const name for deterministic output
-    const sortedConsts = [..._sharedValueData.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const sortedConsts = [..._sharedValueData.entries()]
+      .filter(([constName]) => _usedSharedValues.has(constName))
+      .sort(([a], [b]) => a.localeCompare(b));
     for (const [constName, value] of sortedConsts) {
       // Temporarily disable shared values to serialize the const value as a plain literal
       const saved = _sharedValues;
@@ -316,7 +324,9 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
       lines.push(`const ${constName} = ${serializeValue(value, 0)};`);
       _sharedValues = saved;
     }
-    lines.push("");
+    if (sortedConsts.length > 0) {
+      lines.push("");
+    }
   }
   lines.push("export default workflow({");
   lines.push(`  name: ${JSON.stringify(workflow.name)},`);
@@ -347,6 +357,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   // Cleanup module-level state
   _sharedValues = new Map();
   _sharedValueData = new Map();
+  _usedSharedValues = new Set();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -1161,12 +1172,15 @@ function nodeHasSpaceName(node: GraphNode): boolean {
 }
 
 /**
- * Recursively remove empty `options: {}` from parameters.
+ * n8n の "optional extras" キー (`options`, `additionalFields`) が
+ * 空オブジェクト、または全値が空文字の場合に除去する。
  */
+const STRIPPABLE_PARAM_KEYS = new Set(["options", "additionalFields"]);
+
 function stripEmptyOptions(params: JsonObject): JsonObject {
   const result: JsonObject = {};
   for (const [key, value] of Object.entries(params)) {
-    if (key === "options" && isEmptyObject(value)) {
+    if (STRIPPABLE_PARAM_KEYS.has(key) && isEffectivelyEmptyExtras(value)) {
       continue;
     }
     result[key] = value;
@@ -1174,13 +1188,17 @@ function stripEmptyOptions(params: JsonObject): JsonObject {
   return result;
 }
 
-function isEmptyObject(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 0
-  );
+/**
+ * Returns true for `{}` or objects where all values are empty strings / null / undefined.
+ */
+function isEffectivelyEmptyExtras(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  const values = Object.values(obj);
+  if (values.length === 0) return true;
+  return values.every((v) => v === "" || v === null || v === undefined);
 }
 
 function isOptionalParamsNode(dslKind: string): boolean {

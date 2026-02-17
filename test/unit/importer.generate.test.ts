@@ -639,4 +639,67 @@ describe("生成改善", () => {
     // Check that a const declaration exists
     expect(result.code).toMatch(/^const \w+ = \{/m);
   });
+
+  test("空の options/additionalFields のみで共有される値は const に切り出さない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-empty-consts",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/a", options: {}, additionalFields: {} },
+          position: [200, 0],
+        },
+        {
+          name: "httpRequest_3",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/b", options: {}, additionalFields: {} },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "httpRequest_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // No const declaration for empty objects
+    expect(result.code).not.toMatch(/^const /m);
+    // options: {} and additionalFields: {} should not appear in output
+    expect(result.code).not.toMatch(/options:\s*\{\s*\}/);
+    expect(result.code).not.toContain("additionalFields");
+  });
+
+  test("実質空の options (全値が空文字) は削除される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "empty-options-values",
+      nodes: [
+        {
+          name: "googleCalendarTrigger_1",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated", options: { matchTerm: "" } },
+          position: [0, 0],
+        },
+        { name: "noOp_2", type: "n8n-nodes-base.noOp", typeVersion: 1, parameters: {}, position: [200, 0] },
+      ],
+      connections: {
+        googleCalendarTrigger_1: { main: [[{ node: "noOp_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+    // options with only empty-string values should be stripped
+    expect(result.code).not.toContain("matchTerm");
+    expect(result.code).not.toMatch(/options:\s*\{/);
+  });
 });
