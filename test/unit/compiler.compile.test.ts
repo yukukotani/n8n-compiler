@@ -1256,3 +1256,100 @@ test("compile は for...of ノード参照を splitInBatches にコンパイル�
     },
   });
 });
+
+test("compile は for...of ループ内のテンプレートリテラルで反復変数を解決する", () => {
+  const sourceText = "export default workflow({" +
+    'name: "tpl-loop",' +
+    "settings: {}," +
+    "triggers: [n.manualTrigger()]," +
+    "execute() {" +
+    '  const list = n.httpRequest({ method: "GET", url: "https://example.com/items" });' +
+    "  for (const item of list.data) {" +
+    "    n.httpRequest({ method: \"GET\", url: `https://example.com/\${item.name}` });" +
+    "  }" +
+    "}," +
+    "});";
+
+  const result = compile({
+    file: "tpl-loop.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  expect(result.workflow.nodes.map((node) => node.name)).toEqual([
+    "manualTrigger_1",
+    "list",
+    "splitInBatches_3",
+    "httpRequest_4",
+  ]);
+
+  const httpNode = result.workflow.nodes.find((node) => node.name === "httpRequest_4");
+  expect(httpNode?.parameters).toEqual({
+    method: "GET",
+    url: "={{`https://example.com/${$json.name}`}}",
+  });
+});
+
+test("compile は for...of ループ内の if 条件で反復変数を参照できる", () => {
+  const sourceText = `
+    export default workflow({
+      name: "loop-if-ref",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        const list = n.httpRequest({ method: "GET", url: "https://example.com" });
+
+        for (const item of list.data) {
+          if (item.active == true) {
+            n.noOp();
+          } else {
+            n.noOp();
+          }
+        }
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "loop-if-ref.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  // if node should reference $json (loop variable) not $node["item"]
+  const ifNode = result.workflow.nodes.find((node) => node.name.startsWith("if_"));
+  expect(ifNode).toBeDefined();
+  expect(ifNode?.parameters).toEqual({
+    conditions: {
+      options: {
+        caseSensitive: true,
+        leftValue: "",
+        typeValidation: "strict",
+      },
+      conditions: [
+        {
+          leftValue: "={{$json.active == true}}",
+          rightValue: true,
+          operator: {
+            type: "boolean",
+            operation: "true",
+          },
+        },
+      ],
+      combinator: "and",
+    },
+    options: {},
+  });
+});

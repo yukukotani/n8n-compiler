@@ -1066,6 +1066,58 @@ test("buildControlFlowGraph は for...of のソースにノード参照式を受
   }
 });
 
+test("buildControlFlowGraph は for...of ループ内で反復変数をノードパラメータ参照に解決する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "sample",
+      triggers: [n.manualTrigger()],
+      execute() {
+        const list = n.httpRequest({ method: "GET", url: "https://example.com/items" });
+
+        for (const item of list.data) {
+          n.httpRequest({ method: "GET", url: item.href });
+        }
+      },
+    });
+  `;
+
+  const parseResult = parseSync("workflow.ts", sourceText);
+  expect(parseResult.diagnostics).toEqual([]);
+
+  if (!parseResult.program) {
+    throw new Error("program is unexpectedly null");
+  }
+
+  const entryResult = extractEntry("workflow.ts", parseResult.program);
+  expect(entryResult.diagnostics).toEqual([]);
+
+  if (!entryResult.entry) {
+    throw new Error("entry is unexpectedly null");
+  }
+
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+
+  expect(cfgResult.diagnostics).toEqual([]);
+  expect(cfgResult.cfg).not.toBeNull();
+
+  if (!cfgResult.cfg) {
+    throw new Error("cfg is unexpectedly null");
+  }
+
+  const forOfStatement = cfgResult.cfg.body[1];
+  expect(forOfStatement?.type).toBe("ForOf");
+  if (forOfStatement?.type === "ForOf") {
+    const bodyCall = forOfStatement.body[0];
+    expect(bodyCall?.type).toBe("NodeCall");
+    if (bodyCall?.type === "NodeCall") {
+      expect(bodyCall.call.parameters).toEqual({
+        method: "GET",
+        url: "={{$json.href}}",
+      });
+    }
+  }
+});
+
 test("buildControlFlowGraph は非対応構文を diagnostics に変換する", () => {
   const sourceText = `
     export default workflow({

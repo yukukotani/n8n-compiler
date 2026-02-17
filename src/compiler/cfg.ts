@@ -142,6 +142,7 @@ type BuildContext = {
   file: string;
   diagnostics: Diagnostic[];
   nodeVariables: Set<string>;
+  loopVariables: Set<string>;
 };
 
 type DslCall = {
@@ -160,6 +161,7 @@ export function buildControlFlowGraph(
     file,
     diagnostics: [],
     nodeVariables: new Set(triggerVariableNames ?? []),
+    loopVariables: new Set(),
   };
   const executeBody = pickExecuteBody(execute, context);
   const body = buildStatements(executeBody, context);
@@ -361,7 +363,7 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
     const expression = expressionArg
       ? buildIfExpressionString(expressionArg, context.nodeVariables, {
           allowRawStringLiteral: true,
-        })
+        }, context.loopVariables)
       : null;
     if (expression !== null) {
       return {
@@ -373,7 +375,7 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
 
   const directExpression = buildIfExpressionString(test, context.nodeVariables, {
     allowRawStringLiteral: false,
-  });
+  }, context.loopVariables);
   if (directExpression !== null) {
     // When the top-level expression is a bare node reference (no comparison/logical/unary operator),
     // wrap with !! to ensure boolean coercion. Without this, n8n's condition check
@@ -401,6 +403,7 @@ function buildIfExpressionString(
   expression: Expression,
   nodeVariables: ReadonlySet<string>,
   options: { allowRawStringLiteral: boolean },
+  loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (options.allowRawStringLiteral && expression.type === "Literal") {
     if (typeof expression.value === "string") {
@@ -408,7 +411,7 @@ function buildIfExpressionString(
     }
   }
 
-  const body = serializeIfExpressionBody(expression, nodeVariables);
+  const body = serializeIfExpressionBody(expression, nodeVariables, loopVariables);
   if (body === null) {
     return null;
   }
@@ -419,9 +422,10 @@ function buildIfExpressionString(
 function serializeIfExpressionBody(
   expression: Expression,
   nodeVariables: ReadonlySet<string>,
+  loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (expression.type === "Identifier" || expression.type === "MemberExpression") {
-    return serializeNodeReferenceExpression(expression, nodeVariables);
+    return serializeNodeReferenceExpression(expression, nodeVariables, loopVariables);
   }
 
   if (expression.type === "Literal") {
@@ -429,7 +433,7 @@ function serializeIfExpressionBody(
   }
 
   if (expression.type === "ParenthesizedExpression") {
-    const inner = serializeIfExpressionBody(expression.expression, nodeVariables);
+    const inner = serializeIfExpressionBody(expression.expression, nodeVariables, loopVariables);
     if (inner === null) {
       return null;
     }
@@ -441,7 +445,7 @@ function serializeIfExpressionBody(
       return null;
     }
 
-    const argument = serializeIfExpressionBody(expression.argument, nodeVariables);
+    const argument = serializeIfExpressionBody(expression.argument, nodeVariables, loopVariables);
     if (argument === null) {
       return null;
     }
@@ -458,8 +462,8 @@ function serializeIfExpressionBody(
       return null;
     }
 
-    const left = serializeIfExpressionBody(expression.left, nodeVariables);
-    const right = serializeIfExpressionBody(expression.right, nodeVariables);
+    const left = serializeIfExpressionBody(expression.left, nodeVariables, loopVariables);
+    const right = serializeIfExpressionBody(expression.right, nodeVariables, loopVariables);
     if (left === null || right === null) {
       return null;
     }
@@ -472,8 +476,8 @@ function serializeIfExpressionBody(
       return null;
     }
 
-    const left = serializeIfExpressionBody(expression.left, nodeVariables);
-    const right = serializeIfExpressionBody(expression.right, nodeVariables);
+    const left = serializeIfExpressionBody(expression.left, nodeVariables, loopVariables);
+    const right = serializeIfExpressionBody(expression.right, nodeVariables, loopVariables);
     if (left === null || right === null) {
       return null;
     }
@@ -510,10 +514,14 @@ function serializeLiteralValue(value: unknown): string | null {
 function serializeNodeReferenceExpression(
   expression: Expression,
   nodeVariables: ReadonlySet<string>,
+  loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (expression.type === "Identifier") {
     if (nodeVariables.has(expression.name)) {
       return `$node[${JSON.stringify(expression.name)}].json`;
+    }
+    if (loopVariables?.has(expression.name)) {
+      return "$json";
     }
 
     return null;
@@ -550,11 +558,19 @@ function serializeNodeReferenceExpression(
     current = current.object;
   }
 
-  if (current.type !== "Identifier" || !nodeVariables.has(current.name)) {
+  if (current.type !== "Identifier") {
     return null;
   }
 
-  return `$node[${JSON.stringify(current.name)}].json${segments.join("")}`;
+  if (nodeVariables.has(current.name)) {
+    return `$node[${JSON.stringify(current.name)}].json${segments.join("")}`;
+  }
+
+  if (loopVariables?.has(current.name)) {
+    return `$json${segments.join("")}`;
+  }
+
+  return null;
 }
 
 function buildForOfStatement(statement: ForOfStatement, context: BuildContext): CfgStatement[] {
@@ -593,46 +609,48 @@ function buildForOfStatement(statement: ForOfStatement, context: BuildContext): 
     return [];
   }
 
+  // Determine source type
+  let source: CfgForOfSource;
   const sourceCall = readDslCall(statement.right);
   if (sourceCall?.name === "loop") {
-    return [
-      {
-        type: "ForOf",
-        iteratorName: iterator.id.name,
-        source: {
-          type: "LoopCall",
-          options: pickExpressionArgument(sourceCall.arguments[0]),
-        },
-        body: buildStatements(toStatementList(statement.body), context),
-      },
-    ];
+    source = {
+      type: "LoopCall",
+      options: pickExpressionArgument(sourceCall.arguments[0]),
+    };
+  } else {
+    const nodeRef = serializeNodeReferenceExpression(statement.right, context.nodeVariables);
+    if (nodeRef !== null) {
+      source = { type: "NodeRef" };
+    } else {
+      pushDiagnostic(context, {
+        code: "E_INVALID_LOOP_SOURCE",
+        message: "for...of source must be n.loop(...) or a node reference",
+        start: statement.right.start,
+        end: statement.right.end,
+      });
+      return [];
+    }
   }
 
-  const nodeRef = serializeNodeReferenceExpression(statement.right, context.nodeVariables);
-  if (nodeRef !== null) {
-    return [
-      {
-        type: "ForOf",
-        iteratorName: iterator.id.name,
-        source: { type: "NodeRef" },
-        body: buildStatements(toStatementList(statement.body), context),
-      },
-    ];
-  }
+  // Register iterator as loop variable for body scope
+  context.loopVariables.add(iterator.id.name);
+  const body = buildStatements(toStatementList(statement.body), context);
+  context.loopVariables.delete(iterator.id.name);
 
-  pushDiagnostic(context, {
-    code: "E_INVALID_LOOP_SOURCE",
-    message: "for...of source must be n.loop(...) or a node reference",
-    start: statement.right.start,
-    end: statement.right.end,
-  });
-  return [];
+  return [
+    {
+      type: "ForOf",
+      iteratorName: iterator.id.name,
+      source,
+      body,
+    },
+  ];
 }
 
 function buildSwitchStatement(statement: SwitchStatement, context: BuildContext): CfgStatement[] {
   const discriminant = buildIfExpressionString(statement.discriminant, context.nodeVariables, {
     allowRawStringLiteral: false,
-  });
+  }, context.loopVariables);
 
   if (discriminant === null) {
     pushDiagnostic(context, {
@@ -800,7 +818,7 @@ function toNodeCall(
     return null;
   }
 
-  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables);
+  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables, context.loopVariables);
   const options = parseNodeCallOptions(call.arguments);
 
   return {
@@ -839,6 +857,7 @@ function readDslCall(expression: Expression): DslCall | null {
 function parseNodeCallParameters(
   args: Argument[],
   nodeVariables: ReadonlySet<string>,
+  loopVariables?: ReadonlySet<string>,
 ): JsonObject {
   const firstArg = args[0];
   if (!firstArg || firstArg.type === "SpreadElement") {
@@ -846,7 +865,7 @@ function parseNodeCallParameters(
   }
 
   if (firstArg.type === "ObjectExpression") {
-    const parsed = parseExpressionAsJson(firstArg, nodeVariables);
+    const parsed = parseExpressionAsJson(firstArg, nodeVariables, loopVariables);
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as JsonObject;
     }

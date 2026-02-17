@@ -22,7 +22,7 @@ export default workflow({
       for (const item of check.results) {
         const checkItem = n.httpRequest({
           method: "GET",
-          url: "https://example.com/api/check-item",
+          url: `https://example.com/api/check-item/${item.id}`,
         });
 
         if (checkItem.inner == true) {
