@@ -1,8 +1,10 @@
 import { compile, createErrorDiagnostic, formatDiagnostic, type Diagnostic } from "../compiler";
 import { deployWorkflow, type DeployMode } from "../n8n/deploy";
 import { createN8nClient, N8nClientError } from "../n8n/client";
+import { extractWorkflowId } from "../importer/extract-workflow-id";
+import { generateWorkflowCode } from "../importer/generate";
 
-type CommandName = "compile" | "validate" | "deploy";
+type CommandName = "compile" | "validate" | "deploy" | "import";
 
 type ParsedArgs = {
   positionals: string[];
@@ -21,6 +23,7 @@ type CliResult = {
 const EXIT_SUCCESS = 0;
 const EXIT_COMPILE_OR_VALIDATE_ERROR = 1;
 const EXIT_DEPLOY_ERROR = 2;
+const EXIT_IMPORT_ERROR = 3;
 
 const USAGE = `Usage:
   bun run src/cli.ts <command> [options]
@@ -29,13 +32,14 @@ Commands:
   compile <entry.ts> --out <file>
   validate <entry.ts>
   deploy <entry.ts> [--mode create|update|upsert] [--id <id>] [--activate]
+  import <workflow-id-or-url> --out <file>
 
 Global options:
   --json
   --base-url <url>   (or N8N_BASE_URL)
   --api-key <key>    (or N8N_API_KEY)`;
 
-const SUPPORTED_COMMANDS = new Set<CommandName>(["compile", "validate", "deploy"]);
+const SUPPORTED_COMMANDS = new Set<CommandName>(["compile", "validate", "deploy", "import"]);
 const DEPLOY_MODES = new Set<DeployMode>(["create", "update", "upsert"]);
 
 export async function runCli(args: string[]): Promise<number> {
@@ -71,7 +75,9 @@ export async function runCli(args: string[]): Promise<number> {
       ? await runCompileCommand(parsed)
       : command === "validate"
         ? await runValidateCommand(parsed)
-        : await runDeployCommand(parsed);
+        : command === "import"
+          ? await runImportCommand(parsed)
+          : await runDeployCommand(parsed);
 
   return emitResult(result, json);
 }
@@ -141,6 +147,85 @@ async function runValidateCommand(parsed: ParsedArgs): Promise<CliResult> {
     exitCode: EXIT_SUCCESS,
     message: `Validation passed: ${entry}`,
   };
+}
+
+async function runImportCommand(parsed: ParsedArgs): Promise<CliResult> {
+  const target = parsed.positionals[0];
+  const outFile = getStringOption(parsed.options, "out");
+
+  if (!target || !outFile) {
+    return {
+      command: "import",
+      exitCode: EXIT_IMPORT_ERROR,
+      message: "import requires: import <workflow-id-or-url> --out <file>",
+    };
+  }
+
+  const extracted = extractWorkflowId(target);
+  if (!extracted) {
+    return {
+      command: "import",
+      exitCode: EXIT_IMPORT_ERROR,
+      message: `Cannot parse workflow target: ${target}`,
+    };
+  }
+
+  const baseUrl = getStringOption(parsed.options, "base-url") ?? Bun.env.N8N_BASE_URL ?? extracted.baseUrl;
+  const apiKey = getStringOption(parsed.options, "api-key") ?? Bun.env.N8N_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return {
+      command: "import",
+      exitCode: EXIT_IMPORT_ERROR,
+      message: "import requires --base-url/--api-key (or N8N_BASE_URL/N8N_API_KEY), or provide a full URL",
+    };
+  }
+
+  const client = createN8nClient({
+    baseUrl,
+    apiKey,
+    file: target,
+  });
+
+  try {
+    const workflow = await client.getWorkflow(extracted.id);
+    const result = generateWorkflowCode({
+      name: workflow.name,
+      nodes: workflow.nodes,
+      connections: workflow.connections as Record<string, { main: Array<Array<{ node: string; type: string; index: number }>> }>,
+      settings: workflow.settings as Record<string, unknown>,
+    });
+
+    if (result.errors.length > 0) {
+      return {
+        command: "import",
+        exitCode: EXIT_IMPORT_ERROR,
+        message: result.errors.join("\n"),
+      };
+    }
+
+    await Bun.write(outFile, result.code!);
+
+    return {
+      command: "import",
+      exitCode: EXIT_SUCCESS,
+      message: `Imported workflow ${extracted.id} -> ${outFile}`,
+      payload: { output: outFile, workflowId: extracted.id },
+    };
+  } catch (error) {
+    if (error instanceof N8nClientError) {
+      return {
+        command: "import",
+        exitCode: EXIT_IMPORT_ERROR,
+        diagnostics: [error.diagnostic],
+      };
+    }
+
+    return {
+      command: "import",
+      exitCode: EXIT_IMPORT_ERROR,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function runDeployCommand(parsed: ParsedArgs): Promise<CliResult> {

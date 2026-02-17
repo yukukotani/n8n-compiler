@@ -175,6 +175,41 @@ export function createN8nClient(options: N8nClientOptions) {
       });
     },
 
+    async getWorkflow(id: string): Promise<N8nWorkflow> {
+      const result = await http.request<N8nWorkflow | { data: N8nWorkflow } | undefined>({
+        method: "GET",
+        path: `${API_BASE_PATH}/workflows/${encodeURIComponent(id)}`,
+      });
+
+      if (!result || typeof result !== "object") {
+        throw http.toClientError(
+          "E_API_NETWORK",
+          `GET /workflows/${id} returned unexpected response`,
+        );
+      }
+
+      // Some n8n versions wrap the response in { data: ... }
+      if ("data" in result && !("nodes" in result)) {
+        const inner = (result as { data: N8nWorkflow }).data;
+        if (!inner || typeof inner !== "object" || !("name" in inner)) {
+          throw http.toClientError(
+            "E_API_NETWORK",
+            `GET /workflows/${id} returned invalid workflow data`,
+          );
+        }
+        return inner;
+      }
+
+      if (!("name" in result)) {
+        throw http.toClientError(
+          "E_API_NETWORK",
+          `GET /workflows/${id} returned invalid workflow data`,
+        );
+      }
+
+      return result as N8nWorkflow;
+    },
+
     async activateWorkflow(id: string): Promise<void> {
       await http.request<void>({
         method: "POST",

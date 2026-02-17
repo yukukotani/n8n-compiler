@@ -38,6 +38,27 @@ bun run cli -- deploy ./workflows/order.workflow.ts --mode update --id wf_123 --
 - `--mode update` では `--id` が必須
 - `--activate` 指定時は deploy 後に activate API を呼び出す
 
+### import
+
+```bash
+# workflow ID で指定
+N8N_BASE_URL="https://n8n.example.com" N8N_API_KEY="***" bun run cli -- import 42 --out ./workflows/imported.workflow.ts
+
+# n8n エディタ URL で指定（base-url は URL から自動抽出）
+N8N_API_KEY="***" bun run cli -- import "https://n8n.example.com/workflow/42" --out ./workflows/imported.workflow.ts
+
+# サブパス付き URL も対応
+N8N_API_KEY="***" bun run cli -- import "https://n8n.example.com/n8n/workflow/42" --out ./workflows/imported.workflow.ts
+```
+
+- 入力: workflow ID（数値/英数字）または n8n エディタ URL
+- 出力: DSL TypeScript ファイル（`export default workflow({...})` 形式）
+- URL 指定時は origin + path prefix を `--base-url` として自動利用
+- `--base-url` / `--api-key` は `deploy` と同じ方法で指定可能
+- 対応ノードタイプ: `compile` がサポートする全ノード（`manualTrigger`, `scheduleTrigger`, `webhookTrigger`, `googleCalendarTrigger`, `httpRequest`, `set`, `noOp`, `code`, `executeWorkflow`, `filter`, `sort`, `splitOut`, `merge`, `removeDuplicates`, `respondToWebhook`, `aggregate`, `limit`, `summarize`, `wait`, `switch`, `googleCalendar`）
+- 対応制御フロー: `if` / `for..of`(splitInBatches) / `switch` / `n.parallel`(fan-out)
+- 未対応のノードタイプを含む workflow はエラーを返す
+
 ## サポート構文と制約
 
 MVP サポートは次の通りです。
@@ -143,6 +164,7 @@ MVP サポートは次の通りです。
 - `0`: 成功
 - `1`: compile/validate エラー（診断あり）
 - `2`: deploy/API エラー
+- `3`: import エラー（API 通信失敗、未対応ノードタイプなど）
 
 ## 運用メモ
 

@@ -6,9 +6,19 @@ type RunCliOptions = {
 function buildEnv(overrides: Record<string, string | undefined> = {}): Record<string, string> {
   const env: Record<string, string> = {};
 
-  for (const [key, value] of Object.entries({ ...process.env, ...overrides })) {
+  // Copy process.env first
+  for (const [key, value] of Object.entries(process.env)) {
     if (typeof value === "string") {
       env[key] = value;
+    }
+  }
+
+  // Apply overrides: undefined means "remove this key"
+  for (const [key, value] of Object.entries(overrides)) {
+    if (typeof value === "string") {
+      env[key] = value;
+    } else {
+      delete env[key];
     }
   }
 
