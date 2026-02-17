@@ -1,9 +1,10 @@
-import type { ArrayExpression, Comment, Expression } from "oxc-parser";
+import type { ArrayExpression, Comment, Expression, Program } from "oxc-parser";
 import { TRIGGER_NODE_KINDS } from "../dsl";
 import {
   parseExpressionAsJson,
   parseObjectExpression,
   type JsonObject,
+  type JsonValue,
 } from "./ast-json";
 import { buildN8nConnections, type N8nConnections } from "./connections";
 import { buildControlFlowGraph } from "./cfg";
@@ -63,6 +64,8 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  const bindings = collectTopLevelBindings(program);
+
   const entry = runStage(diagnostics, () => {
     const extractResult = extractEntry(input.file, program);
     return {
@@ -79,7 +82,7 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
-  const triggers = runStage(diagnostics, () => parseTriggers(input.file, entry.triggers));
+  const triggers = runStage(diagnostics, () => parseTriggers(input.file, entry.triggers, bindings));
   if (!triggers) {
     return { workflow: null, diagnostics };
   }
@@ -102,6 +105,7 @@ export function compile(input: CompileInput): CompileResult {
     const cfgResult = buildControlFlowGraph(input.file, entry.execute, triggerVarNames, {
       sourceText: input.sourceText,
       comments,
+      bindings,
     });
     return {
       value: cfgResult.cfg,
@@ -280,6 +284,7 @@ function parseWorkflowSettings(expression: Expression | null): JsonObject | null
 function parseTriggers(
   file: string,
   triggersExpression: Expression,
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): StageResult<TriggerInput[]> {
   if (triggersExpression.type !== "ArrayExpression") {
     return {
@@ -377,7 +382,7 @@ function parseTriggers(
     const firstArg = element.arguments[0];
     let parameters: JsonObject = {};
     if (firstArg && firstArg.type !== "SpreadElement" && firstArg.type === "ObjectExpression") {
-      const parsed = parseExpressionAsJson(firstArg, new Set());
+      const parsed = parseExpressionAsJson(firstArg, new Set(), undefined, bindings);
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
         parameters = parsed as JsonObject;
       }
@@ -388,7 +393,7 @@ function parseTriggers(
     let triggerDisplayName: string | undefined;
     let triggerPosition: [number, number] | undefined;
     if (secondArg && secondArg.type !== "SpreadElement" && secondArg.type === "ObjectExpression") {
-      const parsed = parseExpressionAsJson(secondArg, new Set());
+      const parsed = parseExpressionAsJson(secondArg, new Set(), undefined, bindings);
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
         const opts = parsed as Record<string, unknown>;
         if (opts.credentials && typeof opts.credentials === "object" && !Array.isArray(opts.credentials)) {
@@ -422,4 +427,35 @@ function parseTriggers(
   }
 
   return { value: triggers, diagnostics: [] };
+}
+
+/**
+ * Collect top-level `const` declarations with literal initializers
+ * so that shorthand references like `{ googleCalendarOAuth2Api }` can be resolved.
+ */
+function collectTopLevelBindings(program: Program): Map<string, JsonValue> {
+  const bindings = new Map<string, JsonValue>();
+
+  for (const statement of program.body) {
+    if (
+      statement.type !== "VariableDeclaration" ||
+      statement.kind !== "const"
+    ) {
+      continue;
+    }
+
+    for (const declarator of (statement as { declarations: Array<{ id: Expression; init: Expression | null }> }).declarations) {
+      if (declarator.id.type !== "Identifier" || !declarator.init) {
+        continue;
+      }
+
+      // Parse the initializer as a plain JSON value (no variable references)
+      const value = parseExpressionAsJson(declarator.init);
+      if (value !== null) {
+        bindings.set((declarator.id as { name: string }).name, value);
+      }
+    }
+  }
+
+  return bindings;
 }

@@ -1449,3 +1449,114 @@ test("compile は @name JSDoc が options.name より優先される", () => {
   const httpNode = result.workflow.nodes[1];
   expect(httpNode?.name).toBe("JSDoc Name");
 });
+
+test("compile はトップレベル const 参照 (shorthand) の credentials を正しく解決する", () => {
+  const sourceText = `
+    const httpBasicAuth = { id: "cred-1", name: "My Auth" };
+
+    export default workflow({
+      name: "const-ref-test",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.httpRequest(
+          { method: "GET", url: "https://example.com" },
+          { credentials: { httpBasicAuth } },
+        );
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "const-ref.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const httpNode = result.workflow.nodes[1];
+  expect(httpNode?.credentials).toEqual({
+    httpBasicAuth: { id: "cred-1", name: "My Auth" },
+  });
+});
+
+test("compile はトップレベル const 参照をトリガーの credentials でも解決する", () => {
+  const sourceText = `
+    const googleCalendarOAuth2Api = { id: "cred-1", name: "Google Cal" };
+
+    export default workflow({
+      name: "const-trigger-test",
+      settings: {},
+      triggers: [
+        n.googleCalendarTrigger(
+          { calendarId: "test@example.com" },
+          { credentials: { googleCalendarOAuth2Api } },
+        ),
+      ],
+      execute() {
+        n.noOp();
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "const-trigger.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const triggerNode = result.workflow.nodes[0];
+  expect(triggerNode?.type).toBe("n8n-nodes-base.googleCalendarTrigger");
+  expect(triggerNode?.credentials).toEqual({
+    googleCalendarOAuth2Api: { id: "cred-1", name: "Google Cal" },
+  });
+});
+
+test("compile はトップレベル const 参照をパラメータ内でも解決する", () => {
+  const sourceText = `
+    const calendarId = { __rl: true, mode: "list", value: "test@example.com" };
+
+    export default workflow({
+      name: "const-param-test",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.googleCalendar({
+          calendar: calendarId,
+          start: "2025-01-01",
+          end: "2025-01-02",
+        });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "const-param.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const calNode = result.workflow.nodes[1];
+  expect(calNode?.parameters).toEqual(
+    expect.objectContaining({
+      calendar: { __rl: true, mode: "list", value: "test@example.com" },
+    }),
+  );
+});

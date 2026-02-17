@@ -14,7 +14,7 @@ import type {
 } from "oxc-parser";
 import type { NodeKind } from "../dsl/types";
 import { TRIGGER_NODE_KINDS } from "../dsl";
-import { parseExpressionAsJson, type JsonObject } from "./ast-json";
+import { parseExpressionAsJson, type JsonObject, type JsonValue } from "./ast-json";
 import { createErrorDiagnostic, type Diagnostic } from "./diagnostics";
 
 const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
@@ -148,6 +148,7 @@ type BuildContext = {
   diagnostics: Diagnostic[];
   nodeVariables: Set<string>;
   loopVariables: Set<string>;
+  bindings?: ReadonlyMap<string, JsonValue>;
 };
 
 type DslCall = {
@@ -161,7 +162,7 @@ export function buildControlFlowGraph(
   file: string,
   execute: Expression,
   triggerVariableNames?: string[],
-  options?: { sourceText?: string; comments?: Comment[] },
+  options?: { sourceText?: string; comments?: Comment[]; bindings?: ReadonlyMap<string, JsonValue> },
 ): BuildControlFlowGraphResult {
   const context: BuildContext = {
     file,
@@ -170,6 +171,7 @@ export function buildControlFlowGraph(
     diagnostics: [],
     nodeVariables: new Set(triggerVariableNames ?? []),
     loopVariables: new Set(),
+    bindings: options?.bindings,
   };
   const executeBody = pickExecuteBody(execute, context);
   const body = buildStatements(executeBody, context);
@@ -831,8 +833,8 @@ function toNodeCall(
     return null;
   }
 
-  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables, context.loopVariables);
-  const options = parseNodeCallOptions(call.arguments);
+  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables, context.loopVariables, context.bindings);
+  const options = parseNodeCallOptions(call.arguments, context.bindings);
 
   return {
     kind: call.name as NodeKind,
@@ -871,6 +873,7 @@ function parseNodeCallParameters(
   args: Argument[],
   nodeVariables: ReadonlySet<string>,
   loopVariables?: ReadonlySet<string>,
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonObject {
   const firstArg = args[0];
   if (!firstArg || firstArg.type === "SpreadElement") {
@@ -878,7 +881,7 @@ function parseNodeCallParameters(
   }
 
   if (firstArg.type === "ObjectExpression") {
-    const parsed = parseExpressionAsJson(firstArg, nodeVariables, loopVariables);
+    const parsed = parseExpressionAsJson(firstArg, nodeVariables, loopVariables, bindings);
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as JsonObject;
     }
@@ -973,6 +976,7 @@ function pickParallelBranchBody(
 
 function parseNodeCallOptions(
   args: Argument[],
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): CfgNodeCallOptions | undefined {
   const secondArg = args[1];
   if (!secondArg || secondArg.type === "SpreadElement") {
@@ -983,7 +987,7 @@ function parseNodeCallOptions(
     return undefined;
   }
 
-  const parsed = parseExpressionAsJson(secondArg);
+  const parsed = parseExpressionAsJson(secondArg, undefined, undefined, bindings);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return undefined;
   }

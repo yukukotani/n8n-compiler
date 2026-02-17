@@ -1,18 +1,24 @@
 import type { ArrayExpression, Expression, ObjectExpression, TemplateLiteral } from "oxc-parser";
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
 export function parseExpressionAsJson(
   expression: Expression,
   nodeVariables?: ReadonlySet<string>,
   loopVariables?: ReadonlySet<string>,
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonValue | null {
   if (nodeVariables || loopVariables) {
     const ref = tryResolveReference(expression, nodeVariables ?? new Set(), loopVariables);
     if (ref !== null) {
       return ref;
     }
+  }
+
+  // Resolve top-level const bindings (e.g. `const foo = { ... }` referenced as `foo`)
+  if (expression.type === "Identifier" && bindings?.has(expression.name)) {
+    return bindings.get(expression.name)!;
   }
 
   if (expression.type === "Literal") {
@@ -29,11 +35,11 @@ export function parseExpressionAsJson(
   }
 
   if (expression.type === "ObjectExpression") {
-    return parseObjectExpression(expression, nodeVariables, loopVariables);
+    return parseObjectExpression(expression, nodeVariables, loopVariables, bindings);
   }
 
   if (expression.type === "ArrayExpression") {
-    return parseArrayExpression(expression, nodeVariables, loopVariables);
+    return parseArrayExpression(expression, nodeVariables, loopVariables, bindings);
   }
 
   if (expression.type === "TemplateLiteral") {
@@ -47,6 +53,7 @@ export function parseObjectExpression(
   expression: ObjectExpression,
   nodeVariables?: ReadonlySet<string>,
   loopVariables?: ReadonlySet<string>,
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonObject | null {
   const result: JsonObject = {};
 
@@ -60,7 +67,7 @@ export function parseObjectExpression(
       return null;
     }
 
-    const value = parseExpressionAsJson(property.value, nodeVariables, loopVariables);
+    const value = parseExpressionAsJson(property.value, nodeVariables, loopVariables, bindings);
     if (value === null && !isNullLiteral(property.value)) {
       return null;
     }
@@ -75,6 +82,7 @@ function parseArrayExpression(
   expression: ArrayExpression,
   nodeVariables?: ReadonlySet<string>,
   loopVariables?: ReadonlySet<string>,
+  bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonValue[] | null {
   const result: JsonValue[] = [];
 
@@ -83,7 +91,7 @@ function parseArrayExpression(
       return null;
     }
 
-    const value = parseExpressionAsJson(element, nodeVariables, loopVariables);
+    const value = parseExpressionAsJson(element, nodeVariables, loopVariables, bindings);
     if (value === null && !isNullLiteral(element)) {
       return null;
     }

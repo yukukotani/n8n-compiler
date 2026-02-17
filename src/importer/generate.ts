@@ -111,6 +111,104 @@ type ReverseAdjacencyMap = Map<string, Set<string>>;
 /** Set of edges that are loop-back edges (target → splitInBatches) */
 type LoopBackEdges = Set<string>; // encoded as "from->to"
 
+// ── Shared value extraction ───────────────────────────────────────────────────
+
+/**
+ * Module-level map for the current generation pass.
+ * Maps canonicalJson(value) → const variable name.
+ * Used by serialization functions to emit identifier references instead of literals.
+ */
+let _sharedValues: Map<string, string> = new Map();
+/** Reverse lookup: const name → the original value (for const declaration generation). */
+let _sharedValueData: Map<string, unknown> = new Map();
+
+/**
+ * Canonical JSON representation with sorted keys for consistent comparison.
+ */
+function canonicalJson(value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return "[" + value.map(canonicalJson).join(",") + "]";
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return "{" + entries.map(([k, v]) => JSON.stringify(k) + ":" + canonicalJson(v)).join(",") + "}";
+}
+
+function isValidIdentifier(name: string): boolean {
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+}
+
+/**
+ * Scans all nodes for object values that appear 2+ times across credentials and
+ * top-level parameter entries. Returns a map of canonicalJson → constName.
+ * Also populates `_sharedValueData` as a side effect.
+ */
+function collectSharedValues(nodeMap: Map<string, GraphNode>): Map<string, string> {
+  const occurrences = new Map<string, { key: string; value: unknown; count: number }>();
+
+  function recordValue(key: string, value: unknown) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return;
+    }
+    const json = canonicalJson(value);
+    const existing = occurrences.get(json);
+    if (existing) {
+      existing.count++;
+    } else {
+      occurrences.set(json, { key, value, count: 1 });
+    }
+  }
+
+  for (const node of nodeMap.values()) {
+    // Scan credential entries
+    if (node.credentials) {
+      for (const [key, value] of Object.entries(node.credentials)) {
+        recordValue(key, value);
+      }
+    }
+    // Scan top-level parameter entries (object values only)
+    for (const [key, value] of Object.entries(node.parameters)) {
+      recordValue(key, value);
+    }
+  }
+
+  // Filter for 2+ occurrences with valid identifier keys
+  const result = new Map<string, string>();
+  const dataMap = new Map<string, unknown>();
+  const usedNames = new Set<string>();
+
+  for (const [json, { key, value, count }] of occurrences) {
+    if (count < 2) continue;
+    if (!isValidIdentifier(key)) continue;
+
+    let name = key;
+    if (usedNames.has(name)) {
+      let i = 2;
+      while (usedNames.has(`${name}_${i}`)) i++;
+      name = `${name}_${i}`;
+    }
+    usedNames.add(name);
+    result.set(json, name);
+    dataMap.set(name, value);
+  }
+
+  _sharedValueData = dataMap;
+  return result;
+}
+
+/**
+ * Check if a value matches a shared const. Returns the const name or null.
+ */
+function getSharedConstName(value: unknown): string | null {
+  if (_sharedValues.size === 0) return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const json = canonicalJson(value);
+  return _sharedValues.get(json) ?? null;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult {
@@ -131,6 +229,9 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
       isControlFlow: CONTROL_FLOW_TYPES.has(node.type),
     });
   }
+
+  // Collect shared values for const extraction
+  _sharedValues = collectSharedValues(nodeMap);
 
   // Build adjacency
   const adjacency = buildAdjacency(workflow.connections);
@@ -203,6 +304,20 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   const lines: string[] = [];
   lines.push('import { n, workflow } from "../src/dsl";');
   lines.push("");
+
+  // Generate const declarations for shared values
+  if (_sharedValues.size > 0) {
+    // Sort by const name for deterministic output
+    const sortedConsts = [..._sharedValueData.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [constName, value] of sortedConsts) {
+      // Temporarily disable shared values to serialize the const value as a plain literal
+      const saved = _sharedValues;
+      _sharedValues = new Map();
+      lines.push(`const ${constName} = ${serializeValue(value, 0)};`);
+      _sharedValues = saved;
+    }
+    lines.push("");
+  }
   lines.push("export default workflow({");
   lines.push(`  name: ${JSON.stringify(workflow.name)},`);
 
@@ -228,6 +343,10 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   lines.push("  },");
   lines.push("});");
   lines.push("");
+
+  // Cleanup module-level state
+  _sharedValues = new Map();
+  _sharedValueData = new Map();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -1079,7 +1198,7 @@ function serializeObject(obj: JsonObject, baseIndent: number): string {
   // Simple one-line format for small objects
   if (isSimpleObject(obj)) {
     const inner = entries
-      .map(([key, value]) => `${safeKey(key)}: ${serializeValue(value, baseIndent)}`)
+      .map(([key, value]) => serializeEntry(key, value, baseIndent))
       .join(", ");
     return `{ ${inner} }`;
   }
@@ -1088,9 +1207,24 @@ function serializeObject(obj: JsonObject, baseIndent: number): string {
   const pad = " ".repeat(baseIndent);
   const innerPad = " ".repeat(baseIndent + 2);
   const lineEntries = entries.map(
-    ([key, value]) => `${innerPad}${safeKey(key)}: ${serializeValue(value, baseIndent + 2)},`,
+    ([key, value]) => `${innerPad}${serializeEntry(key, value, baseIndent + 2)},`,
   );
   return `{\n${lineEntries.join("\n")}\n${pad}}`;
+}
+
+/**
+ * Serialize a single object entry (key: value), using shorthand if the value
+ * matches a shared const whose name equals the property key.
+ */
+function serializeEntry(key: string, value: unknown, indent: number): string {
+  const constName = getSharedConstName(value);
+  if (constName !== null) {
+    if (constName === key) {
+      return safeKey(key); // shorthand: { foo } instead of { foo: foo }
+    }
+    return `${safeKey(key)}: ${constName}`;
+  }
+  return `${safeKey(key)}: ${serializeValue(value, indent)}`;
 }
 
 function serializeValue(value: unknown, indent: number): string {
@@ -1110,6 +1244,11 @@ function serializeValue(value: unknown, indent: number): string {
     return serializeArray(value, indent);
   }
   if (typeof value === "object") {
+    // Check if this object matches a shared const
+    const constName = getSharedConstName(value);
+    if (constName !== null) {
+      return constName;
+    }
     return serializeObject(value as JsonObject, indent);
   }
   return JSON.stringify(value);
@@ -1158,6 +1297,10 @@ function isSimpleObject(obj: JsonObject): boolean {
 
   for (const [, value] of entries) {
     if (typeof value === "object" && value !== null) {
+      // If this object would be replaced by a shared const, treat as simple
+      if (getSharedConstName(value) !== null) {
+        continue;
+      }
       return false;
     }
     if (typeof value === "string" && value.length > 60) {

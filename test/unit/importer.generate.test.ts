@@ -379,6 +379,51 @@ describe("ラウンドトリップ: generate → compile", () => {
       httpBasicAuth: { id: "cred-1", name: "My Auth" },
     });
   });
+
+  test("重複 credentials のラウンドトリップ (const 切り出し → compile)", () => {
+    const cred = { id: "cred-1", name: "My Auth" };
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-dedup",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/a" },
+          credentials: { httpBasicAuth: cred },
+          position: [200, 0],
+        },
+        {
+          name: "httpRequest_3",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/b" },
+          credentials: { httpBasicAuth: cred },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "httpRequest_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).toContain("const httpBasicAuth");
+
+    const compileResult = compile({ file: "roundtrip-dedup.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    // Both nodes should have the same credentials resolved from the const
+    const node2 = compileResult.workflow!.nodes[1];
+    const node3 = compileResult.workflow!.nodes[2];
+    expect(node2?.credentials).toEqual({ httpBasicAuth: cred });
+    expect(node3?.credentials).toEqual({ httpBasicAuth: cred });
+  });
 });
 
 describe("生成改善", () => {
@@ -487,5 +532,111 @@ describe("生成改善", () => {
     expect(result.errors).toEqual([]);
     expect(result.code).not.toContain("/** @name");
     expect(result.code).toContain('name: "myRequest"');
+  });
+
+  test("重複する credentials 値を const に切り出す", () => {
+    const cred = { id: "cred-1", name: "My Auth" };
+    const workflow: N8nWorkflowInput = {
+      name: "dedup-creds",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/a" },
+          credentials: { httpBasicAuth: cred },
+          position: [200, 0],
+        },
+        {
+          name: "httpRequest_3",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com/b" },
+          credentials: { httpBasicAuth: cred },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "httpRequest_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should have a const declaration
+    expect(result.code).toContain('const httpBasicAuth = { id: "cred-1", name: "My Auth" };');
+    // Should use shorthand in credentials (e.g. `credentials: { httpBasicAuth }`)
+    expect(result.code).toContain("{ httpBasicAuth }");
+    // Should NOT have the literal object inline in credentials
+    expect(result.code).not.toMatch(/credentials:.*id:.*"cred-1"/);
+  });
+
+  test("1回しか出現しない credentials は const に切り出さない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-dedup-creds",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: { method: "GET", url: "https://example.com" },
+          credentials: { httpBasicAuth: { id: "cred-1", name: "My Auth" } },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // No const declaration
+    expect(result.code).not.toMatch(/^const /m);
+    // Inline credential
+    expect(result.code).toContain('"cred-1"');
+  });
+
+  test("重複するパラメータ値も汎用的に const に切り出す", () => {
+    const sharedCalendar = { __rl: true, cachedResultName: "test@example.com", mode: "list", value: "test@example.com" };
+    const workflow: N8nWorkflowInput = {
+      name: "dedup-params",
+      nodes: [
+        {
+          name: "googleCalendarTrigger_1",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: sharedCalendar, triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: { calendar: sharedCalendar, start: "2025-01-01", end: "2025-01-02" },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        googleCalendarTrigger_1: { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // The calendarId/calendar values are different keys but same value.
+    // Since key names differ, the first key encountered is used as const name.
+    // Check that a const declaration exists
+    expect(result.code).toMatch(/^const \w+ = \{/m);
   });
 });
