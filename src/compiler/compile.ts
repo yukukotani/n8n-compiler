@@ -101,11 +101,22 @@ export function compile(input: CompileInput): CompileResult {
     return { workflow: null, diagnostics };
   }
 
+  // Build display name map for triggers: variableName → actual node name
+  const nodeDisplayNames = new Map<string, string>();
+  for (let i = 0; i < triggerVarNames.length; i++) {
+    const varName = triggerVarNames[i];
+    const trigger = triggers[i];
+    if (varName && trigger?.name) {
+      nodeDisplayNames.set(varName, trigger.name);
+    }
+  }
+
   const cfg = runStage(diagnostics, () => {
     const cfgResult = buildControlFlowGraph(input.file, entry.execute, triggerVarNames, {
       sourceText: input.sourceText,
       comments,
       bindings,
+      nodeDisplayNames,
     });
     return {
       value: cfgResult.cfg,
@@ -382,7 +393,7 @@ function parseTriggers(
     const firstArg = element.arguments[0];
     let parameters: JsonObject = {};
     if (firstArg && firstArg.type !== "SpreadElement" && firstArg.type === "ObjectExpression") {
-      const parsed = parseExpressionAsJson(firstArg, new Set(), undefined, bindings);
+      const parsed = parseExpressionAsJson(firstArg, new Map(), undefined, bindings);
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
         parameters = parsed as JsonObject;
       }
@@ -393,7 +404,7 @@ function parseTriggers(
     let triggerDisplayName: string | undefined;
     let triggerPosition: [number, number] | undefined;
     if (secondArg && secondArg.type !== "SpreadElement" && secondArg.type === "ObjectExpression") {
-      const parsed = parseExpressionAsJson(secondArg, new Set(), undefined, bindings);
+      const parsed = parseExpressionAsJson(secondArg, new Map(), undefined, bindings);
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
         const opts = parsed as Record<string, unknown>;
         if (opts.credentials && typeof opts.credentials === "object" && !Array.isArray(opts.credentials)) {

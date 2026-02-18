@@ -5,12 +5,12 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export function parseExpressionAsJson(
   expression: Expression,
-  nodeVariables?: ReadonlySet<string>,
+  nodeVariables?: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
   bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonValue | null {
   if (nodeVariables || loopVariables) {
-    const ref = tryResolveReference(expression, nodeVariables ?? new Set(), loopVariables);
+    const ref = tryResolveReference(expression, nodeVariables ?? new Map(), loopVariables);
     if (ref !== null) {
       return ref;
     }
@@ -43,13 +43,13 @@ export function parseExpressionAsJson(
   }
 
   if (expression.type === "TemplateLiteral") {
-    return resolveTemplateLiteral(expression, nodeVariables ?? new Set(), loopVariables);
+    return resolveTemplateLiteral(expression, nodeVariables ?? new Map(), loopVariables);
   }
 
   // Fallback: serialize compound expressions (CallExpression, BinaryExpression, etc.)
   // as n8n expression strings ={{...}}
   if (isCompoundExpression(expression)) {
-    const body = serializeExpressionBody(expression, nodeVariables ?? new Set(), loopVariables);
+    const body = serializeExpressionBody(expression, nodeVariables ?? new Map(), loopVariables);
     if (body !== null) {
       return `={{${body}}}`;
     }
@@ -60,7 +60,7 @@ export function parseExpressionAsJson(
 
 export function parseObjectExpression(
   expression: ObjectExpression,
-  nodeVariables?: ReadonlySet<string>,
+  nodeVariables?: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
   bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonObject | null {
@@ -89,7 +89,7 @@ export function parseObjectExpression(
 
 function parseArrayExpression(
   expression: ArrayExpression,
-  nodeVariables?: ReadonlySet<string>,
+  nodeVariables?: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
   bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonValue[] | null {
@@ -126,7 +126,7 @@ function parseArrayExpression(
  */
 function tryResolveReference(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   const body = resolveReferenceBody(expression, nodeVariables, loopVariables);
@@ -144,12 +144,13 @@ function tryResolveReference(
  */
 export function resolveReferenceBody(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (expression.type === "Identifier") {
     if (nodeVariables.has(expression.name)) {
-      return `$node["${expression.name}"].json`;
+      const displayName = nodeVariables.get(expression.name) ?? expression.name;
+      return `$node["${displayName}"].json`;
     }
     if (loopVariables?.has(expression.name)) {
       return "$json";
@@ -192,7 +193,8 @@ export function resolveReferenceBody(
   }
 
   if (nodeVariables.has(current.name)) {
-    return `$node["${current.name}"].json${segments.join("")}`;
+    const displayName = nodeVariables.get(current.name) ?? current.name;
+    return `$node["${displayName}"].json${segments.join("")}`;
   }
 
   if (loopVariables?.has(current.name)) {
@@ -211,7 +213,7 @@ export function resolveReferenceBody(
  */
 function resolveTemplateLiteral(
   expression: TemplateLiteral,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   // No expressions → just a plain string
@@ -307,7 +309,7 @@ function isCompoundExpression(expression: Expression): boolean {
  */
 function serializeExpressionBody(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   // Resolve node/loop variable references first
@@ -480,7 +482,7 @@ function serializeExpressionBody(
 
 function serializeArgumentList(
   args: Argument[],
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   const parts: string[] = [];

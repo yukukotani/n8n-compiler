@@ -778,6 +778,170 @@ describe("生成改善", () => {
     expect(result.code).toContain("import { n, workflow }");
   });
 
+  test("$('Trigger Name') をトリガーの execute パラメータ参照に変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "trigger-ref",
+      nodes: [
+        {
+          name: "Google Calendar Trigger",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: {
+            start: '={{ DateTime.fromISO($("Google Calendar Trigger").item.json.start.dateTime).set({ hour: 9 }) }}',
+            end: '={{ DateTime.fromISO($("Google Calendar Trigger").item.json.start.dateTime).set({ hour: 19 }) }}',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        "Google Calendar Trigger": { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should have execute parameter
+    expect(result.code).toContain("execute(googleCalendar)");
+    // Should use param reference instead of $('...')
+    expect(result.code).toContain("googleCalendar.start.dateTime");
+    // Should NOT contain $('Google Calendar Trigger')
+    expect(result.code).not.toContain("$('Google Calendar Trigger')");
+    expect(result.code).not.toContain('$("Google Calendar Trigger")');
+    // Should NOT import $ since all references were replaced
+    expect(result.code).toContain("import { n, workflow, DateTime }");
+    expect(result.code).not.toContain(", $ ");
+    expect(result.code).not.toContain(", $,");
+    // Should preserve trigger display name
+    expect(result.code).toContain('name: "Google Calendar Trigger"');
+  });
+
+  test("$('Trigger Name') がシンプルな MemberExpression の場合も変換される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "simple-trigger-ref",
+      nodes: [
+        {
+          name: "Google Calendar Trigger",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "set_2",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: '={{ $("Google Calendar Trigger").item.json.summary }}',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        "Google Calendar Trigger": { main: [[{ node: "set_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Simple member expression should be unwrapped
+    expect(result.code).toContain("googleCalendar.summary");
+    expect(result.code).toContain("execute(googleCalendar)");
+  });
+
+  test("$('Trigger Name') → execute パラメータ参照のラウンドトリップ", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "trigger-ref-roundtrip",
+      nodes: [
+        {
+          name: "Google Calendar Trigger",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: {
+            start: '={{ DateTime.fromISO($("Google Calendar Trigger").item.json.start.dateTime).set({ hour: 9 }) }}',
+            end: '={{ DateTime.fromISO($("Google Calendar Trigger").item.json.start.dateTime).set({ hour: 19 }) }}',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        "Google Calendar Trigger": { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    const compileResult = compile({ file: "roundtrip-trigger-ref.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    // Trigger should keep its display name
+    expect(compileResult.workflow!.nodes[0]?.name).toBe("Google Calendar Trigger");
+
+    // Calendar node should have expressions referencing the trigger by display name
+    const calNode = compileResult.workflow!.nodes[1];
+    expect(calNode?.type).toBe("n8n-nodes-base.googleCalendar");
+    expect(calNode?.parameters.start).toBe(
+      '={{DateTime.fromISO($node["Google Calendar Trigger"].json.start.dateTime).set({ hour: 9 })}}',
+    );
+    expect(calNode?.parameters.end).toBe(
+      '={{DateTime.fromISO($node["Google Calendar Trigger"].json.start.dateTime).set({ hour: 19 })}}',
+    );
+  });
+
+  test("非トリガーノードへの $('...') 参照は $ のまま維持される", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "non-trigger-ref",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "googleCalendar_2",
+          type: "n8n-nodes-base.googleCalendar",
+          typeVersion: 1.3,
+          parameters: {
+            start: "={{ DateTime.fromISO($('My Trigger').item.json.start.dateTime).set({ hour: 9 }) }}",
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "googleCalendar_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Should keep $('My Trigger') since 'My Trigger' is not a trigger node name
+    expect(result.code).toContain("$('My Trigger')");
+    // Should import $
+    expect(result.code).toContain("import { n, workflow, $, DateTime }");
+    // Should NOT have execute params
+    expect(result.code).toContain("execute()");
+  });
+
   test("実質空の options (全値が空文字) は削除される", () => {
     const workflow: N8nWorkflowInput = {
       name: "empty-options-values",

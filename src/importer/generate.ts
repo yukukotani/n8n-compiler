@@ -129,6 +129,14 @@ let _usedSharedValues: Set<string> = new Set();
 let _usedN8nGlobals: Set<string> = new Set();
 
 /**
+ * Maps trigger display name → { paramName, triggerIndex }.
+ * Used to replace `$('Trigger Name').item.json.xxx` → `paramName.xxx` in expressions.
+ */
+let _triggerRefMap: Map<string, { paramName: string; triggerIndex: number }> = new Map();
+/** Set of trigger indices actually referenced by `$('...')` expressions. */
+let _referencedTriggers: Set<number> = new Set();
+
+/**
  * Canonical JSON representation with sorted keys for consistent comparison.
  */
 function canonicalJson(value: unknown): string {
@@ -244,6 +252,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _sharedValues = collectSharedValues(nodeMap);
   _usedSharedValues = new Set();
   _usedN8nGlobals = new Set();
+  _referencedTriggers = new Set();
 
   // Build adjacency
   const adjacency = buildAdjacency(workflow.connections);
@@ -256,6 +265,9 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
     errors.push("No trigger nodes found in workflow");
     return { code: null, errors };
   }
+
+  // Build trigger reference map for $('Trigger Name') → param name replacement
+  _triggerRefMap = buildTriggerRefMap(triggers);
 
   // Validate all action nodes are supported
   for (const node of workflow.nodes) {
@@ -359,8 +371,21 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
     lines.push("  ],");
   }
 
-  // Execute
-  lines.push("  execute() {");
+  // Execute (with trigger parameter references if any)
+  const executeParams: string[] = [];
+  if (_referencedTriggers.size > 0) {
+    const maxIndex = Math.max(..._referencedTriggers);
+    for (let i = 0; i <= maxIndex; i++) {
+      const trigger = triggers[i];
+      const ref = trigger ? _triggerRefMap.get(trigger.name) : undefined;
+      executeParams.push(ref?.paramName ?? "_");
+    }
+  }
+  if (executeParams.length > 0) {
+    lines.push(`  execute(${executeParams.join(", ")}) {`);
+  } else {
+    lines.push("  execute() {");
+  }
   lines.push(...bodyLines);
   lines.push("  },");
   lines.push("});");
@@ -371,6 +396,8 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _sharedValueData = new Map();
   _usedSharedValues = new Set();
   _usedN8nGlobals = new Set();
+  _triggerRefMap = new Map();
+  _referencedTriggers = new Set();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -1218,6 +1245,98 @@ function isOptionalParamsNode(dslKind: string): boolean {
   return dslKind === "manualTrigger" || dslKind === "noOp";
 }
 
+// ── Trigger reference helpers ─────────────────────────────────────────────────
+
+/**
+ * Build a mapping from trigger display name → execute parameter variable name.
+ */
+function buildTriggerRefMap(triggers: N8nNodeInput[]): Map<string, { paramName: string; triggerIndex: number }> {
+  const map = new Map<string, { paramName: string; triggerIndex: number }>();
+  const usedNames = new Set<string>();
+
+  for (let i = 0; i < triggers.length; i++) {
+    const trigger = triggers[i]!;
+    const dslKind = N8N_TYPE_TO_DSL_KIND[trigger.type];
+    if (!dslKind) continue;
+
+    let paramName = dslKind.endsWith("Trigger")
+      ? dslKind.slice(0, -"Trigger".length)
+      : dslKind;
+    if (usedNames.has(paramName)) {
+      let suffix = 2;
+      while (usedNames.has(`${paramName}${suffix}`)) suffix++;
+      paramName = `${paramName}${suffix}`;
+    }
+    usedNames.add(paramName);
+
+    map.set(trigger.name, { paramName, triggerIndex: i });
+  }
+
+  return map;
+}
+
+/**
+ * Replace `$('Trigger Name').item.json` / `.first().json` / `.json` patterns
+ * in an expression body with the corresponding execute parameter name.
+ */
+function replaceTriggerReferences(body: string): { replaced: string; hadReplacement: boolean } {
+  let replaced = body;
+  let hadReplacement = false;
+
+  for (const [triggerName, { paramName, triggerIndex }] of _triggerRefMap) {
+    const escaped = triggerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(
+      `\\$\\(\\s*['"]${escaped}['"]\\s*\\)(?:\\.item)?(?:\\.first\\(\\))?\\.json`,
+      "g",
+    );
+    const newBody = replaced.replace(pattern, paramName);
+    if (newBody !== replaced) {
+      _referencedTriggers.add(triggerIndex);
+      replaced = newBody;
+      hadReplacement = true;
+    }
+  }
+
+  return { replaced, hadReplacement };
+}
+
+/**
+ * Check if the body is a valid identifier or member expression (e.g. `trigger.start.dateTime`).
+ * Used to allow unwrapping of simple trigger parameter references.
+ */
+function isSimpleParamReference(body: string): boolean {
+  try {
+    const wrapped = `const _ = (${body});`;
+    const result = oxcParseSync("expr.ts", wrapped, {
+      lang: "ts",
+      sourceType: "module",
+    });
+
+    if (result.errors.length > 0) {
+      return false;
+    }
+
+    const stmt = result.program.body[0];
+    if (!stmt || stmt.type !== "VariableDeclaration") {
+      return false;
+    }
+
+    const declarations = (stmt as { declarations: Array<{ init: { type: string; expression?: { type: string } } | null }> }).declarations;
+    const init = declarations[0]?.init;
+    if (!init) {
+      return false;
+    }
+
+    const expr = init.type === "ParenthesizedExpression" && init.expression
+      ? init.expression
+      : init;
+
+    return expr.type === "Identifier" || expr.type === "MemberExpression";
+  } catch {
+    return false;
+  }
+}
+
 // ── Expression unwrapping ─────────────────────────────────────────────────────
 
 /**
@@ -1258,10 +1377,14 @@ function tryUnwrapExpression(value: string): string | null {
     return null;
   }
 
-  const body = value.slice(3, -2).trim();
+  let body = value.slice(3, -2).trim();
   if (!body) {
     return null;
   }
+
+  // Replace $('Trigger Name').item.json → paramName before further checks
+  const { replaced, hadReplacement } = replaceTriggerReferences(body);
+  body = replaced;
 
   // Don't unwrap expressions that use n8n-only globals ($json, $node, etc.)
   if (N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
@@ -1269,7 +1392,13 @@ function tryUnwrapExpression(value: string): string | null {
   }
 
   // Parse the body as JavaScript and check if it's a compound expression
-  if (!isCompoundJSExpression(body)) {
+  // Also allow simple param references (e.g. `trigger.start.dateTime`)
+  const isCompound = isCompoundJSExpression(body);
+  if (!isCompound) {
+    if (hadReplacement && isSimpleParamReference(body)) {
+      trackN8nGlobals(body);
+      return body;
+    }
     return null;
   }
 

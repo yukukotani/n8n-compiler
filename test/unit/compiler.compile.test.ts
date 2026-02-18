@@ -1213,6 +1213,84 @@ test("compile は execute パラメータでトリガー出力を参照できる
   });
 });
 
+test("compile は displayName 付きトリガーの参照を正しい表示名で解決する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "display-name-ref",
+      settings: {},
+      triggers: [n.googleCalendarTrigger({ calendarId: "test" }, { name: "Google Calendar Trigger" })],
+      execute(googleCalendar) {
+        n.set({ values: { start: googleCalendar.start.dateTime } });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "display-name-ref.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  // Trigger should use display name
+  expect(result.workflow.nodes[0]?.name).toBe("Google Calendar Trigger");
+
+  // Set node references should use the display name, not the variable name
+  const setNode = result.workflow.nodes[1];
+  expect(setNode?.parameters).toEqual({
+    values: {
+      string: [
+        { name: "start", value: '={{$node["Google Calendar Trigger"].json.start.dateTime}}' },
+      ],
+    },
+  });
+});
+
+test("compile は @name JSDoc 付き変数宣言でも正しい表示名で参照を解決する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "jsdoc-ref",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        /** @name My Request */
+        const myReq = n.httpRequest({ method: "GET", url: "https://example.com" });
+        n.set({ values: { data: myReq.body } });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "jsdoc-ref.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  // Node should use JSDoc display name
+  expect(result.workflow.nodes[1]?.name).toBe("My Request");
+
+  // Set node references should use the display name
+  const setNode = result.workflow.nodes[2];
+  expect(setNode?.parameters).toEqual({
+    values: {
+      string: [
+        { name: "data", value: '={{$node["My Request"].json.body}}' },
+      ],
+    },
+  });
+});
+
 test("compile は複数トリガーの execute パラメータ参照を正しく処理する", () => {
   const sourceText = `
     export default workflow({

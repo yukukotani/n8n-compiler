@@ -146,7 +146,8 @@ type BuildContext = {
   sourceText: string;
   comments: Comment[];
   diagnostics: Diagnostic[];
-  nodeVariables: Set<string>;
+  /** Maps variable name → display name for $node["..."] serialization */
+  nodeVariables: Map<string, string>;
   loopVariables: Set<string>;
   bindings?: ReadonlyMap<string, JsonValue>;
 };
@@ -162,14 +163,26 @@ export function buildControlFlowGraph(
   file: string,
   execute: Expression,
   triggerVariableNames?: string[],
-  options?: { sourceText?: string; comments?: Comment[]; bindings?: ReadonlyMap<string, JsonValue> },
+  options?: {
+    sourceText?: string;
+    comments?: Comment[];
+    bindings?: ReadonlyMap<string, JsonValue>;
+    /** Maps variable name → display name for $node["..."] serialization */
+    nodeDisplayNames?: ReadonlyMap<string, string>;
+  },
 ): BuildControlFlowGraphResult {
+  const displayNames = options?.nodeDisplayNames;
+  const nodeVariables = new Map<string, string>();
+  for (const name of triggerVariableNames ?? []) {
+    nodeVariables.set(name, displayNames?.get(name) ?? name);
+  }
+
   const context: BuildContext = {
     file,
     sourceText: options?.sourceText ?? "",
     comments: options?.comments ?? [],
     diagnostics: [],
-    nodeVariables: new Set(triggerVariableNames ?? []),
+    nodeVariables,
     loopVariables: new Set(),
     bindings: options?.bindings,
   };
@@ -330,7 +343,7 @@ function buildVariableDeclaration(
       continue;
     }
 
-    context.nodeVariables.add(declarator.id.name);
+    context.nodeVariables.set(declarator.id.name, displayName ?? declarator.id.name);
 
     statements.push({
       type: "Variable",
@@ -416,7 +429,7 @@ function buildIfTest(test: Expression, context: BuildContext): CfgIfTest | null 
 
 function buildIfExpressionString(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   options: { allowRawStringLiteral: boolean },
   loopVariables?: ReadonlySet<string>,
 ): string | null {
@@ -436,7 +449,7 @@ function buildIfExpressionString(
 
 function serializeIfExpressionBody(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (expression.type === "Identifier" || expression.type === "MemberExpression") {
@@ -528,12 +541,13 @@ function serializeLiteralValue(value: unknown): string | null {
 
 function serializeNodeReferenceExpression(
   expression: Expression,
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
 ): string | null {
   if (expression.type === "Identifier") {
     if (nodeVariables.has(expression.name)) {
-      return `$node[${JSON.stringify(expression.name)}].json`;
+      const displayName = nodeVariables.get(expression.name) ?? expression.name;
+      return `$node[${JSON.stringify(displayName)}].json`;
     }
     if (loopVariables?.has(expression.name)) {
       return "$json";
@@ -578,7 +592,8 @@ function serializeNodeReferenceExpression(
   }
 
   if (nodeVariables.has(current.name)) {
-    return `$node[${JSON.stringify(current.name)}].json${segments.join("")}`;
+    const displayName = nodeVariables.get(current.name) ?? current.name;
+    return `$node[${JSON.stringify(displayName)}].json${segments.join("")}`;
   }
 
   if (loopVariables?.has(current.name)) {
@@ -871,7 +886,7 @@ function readDslCall(expression: Expression): DslCall | null {
 
 function parseNodeCallParameters(
   args: Argument[],
-  nodeVariables: ReadonlySet<string>,
+  nodeVariables: ReadonlyMap<string, string>,
   loopVariables?: ReadonlySet<string>,
   bindings?: ReadonlyMap<string, JsonValue>,
 ): JsonObject {
