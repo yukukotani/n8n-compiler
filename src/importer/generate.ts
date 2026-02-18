@@ -333,7 +333,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   for (const name of [..._usedN8nGlobals].sort()) {
     imports.push(name);
   }
-  lines.push(`import { ${imports.join(", ")} } from "../src/dsl";`);
+  lines.push(`import { ${imports.join(", ")} } from "n8n-compiler/dsl";`);
   lines.push("");
 
   // Generate const declarations for shared values (only those actually referenced)

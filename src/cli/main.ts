@@ -26,7 +26,7 @@ const EXIT_DEPLOY_ERROR = 2;
 const EXIT_IMPORT_ERROR = 3;
 
 const USAGE = `Usage:
-  bun run src/cli.ts <command> [options]
+  n8n-compiler <command> [options]
 
 Commands:
   compile <entry.ts> --out <file>

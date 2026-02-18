@@ -1,11 +1,31 @@
 {
   "name": "n8n-compiler",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "description": "Compile TypeScript workflow DSL to n8n workflow JSON",
   "type": "module",
-  "private": true,
+  "bin": {
+    "n8n-compiler": "./dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "src/dsl"
+  ],
+  "exports": {
+    ".": {
+      "import": "./src/dsl/index.ts",
+      "types": "./src/dsl/index.ts"
+    },
+    "./dsl": {
+      "import": "./src/dsl/index.ts",
+      "types": "./src/dsl/index.ts"
+    }
+  },
   "scripts": {
+    "build": "bun build src/cli.ts --outfile dist/cli.js --target bun --minify",
+    "postbuild": "printf '#!/usr/bin/env bun\\n' | cat - dist/cli.js > dist/cli.tmp && mv dist/cli.tmp dist/cli.js && chmod +x dist/cli.js",
     "cli": "bun run src/cli.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
