@@ -6,7 +6,7 @@ export type WorkflowExecute = (...triggers: NodeRef<TriggerNodeKind>[]) => void 
 
 export type ExpressionValue = `={{${string}}}`;
 
-export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger" | "webhookTrigger" | "googleCalendarTrigger";
+export type TriggerNodeKind = "manualTrigger" | "scheduleTrigger" | "webhookTrigger" | "googleCalendarTrigger" | "formTrigger" | "executeWorkflowTrigger";
 
 // --- Schedule Trigger params ---
 
@@ -78,7 +78,19 @@ export type HttpRequestParams = {
 
 export type GoogleCalendarTriggerParams = JsonObject;
 
+export type FormTriggerParams = JsonObject;
+
+export type ExecuteWorkflowTriggerParams = JsonObject;
+
 export type GoogleCalendarParams = JsonObject;
+
+export type GoogleSheetsParams = JsonObject;
+
+export type ItemListsParams = JsonObject;
+
+export type LangchainAgentParams = JsonObject;
+
+export type LmChatGoogleVertexParams = JsonObject;
 
 export type ExecuteWorkflowParams = {
   workflowId: string;
@@ -227,6 +239,8 @@ export type NodeKind =
   | "scheduleTrigger"
   | "webhookTrigger"
   | "googleCalendarTrigger"
+  | "formTrigger"
+  | "executeWorkflowTrigger"
   | "httpRequest"
   | "executeWorkflow"
   | "code"
@@ -243,7 +257,11 @@ export type NodeKind =
   | "set"
   | "wait"
   | "noOp"
-  | "googleCalendar";
+  | "googleCalendar"
+  | "googleSheets"
+  | "itemLists"
+  | "langchainAgent"
+  | "lmChatGoogleVertex";
 
 export type ActionNodeKind = Exclude<NodeKind, TriggerNodeKind>;
 
@@ -252,6 +270,8 @@ export type NodeParamsByKind = {
   scheduleTrigger: ScheduleTriggerParams;
   webhookTrigger: WebhookTriggerParams;
   googleCalendarTrigger: GoogleCalendarTriggerParams;
+  formTrigger: FormTriggerParams;
+  executeWorkflowTrigger: ExecuteWorkflowTriggerParams;
   httpRequest: HttpRequestParams;
   executeWorkflow: ExecuteWorkflowParams;
   code: CodeParams;
@@ -269,6 +289,10 @@ export type NodeParamsByKind = {
   wait: WaitParams;
   noOp: NoOpParams;
   googleCalendar: GoogleCalendarParams;
+  googleSheets: GoogleSheetsParams;
+  itemLists: ItemListsParams;
+  langchainAgent: LangchainAgentParams;
+  lmChatGoogleVertex: LmChatGoogleVertexParams;
 };
 
 export type NodeParamsOf<Kind extends NodeKind> = NodeParamsByKind[Kind];

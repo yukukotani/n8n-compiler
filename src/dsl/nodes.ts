@@ -152,11 +152,53 @@ export const n = {
     return createNodeRef("noOp", params);
   },
 
+  formTrigger(
+    params: NodeParamsOf<"formTrigger"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"formTrigger"> {
+    return createNodeRef("formTrigger", params);
+  },
+
+  executeWorkflowTrigger(
+    params: NodeParamsOf<"executeWorkflowTrigger"> = {},
+    _options?: NodeOptions,
+  ): NodeRef<"executeWorkflowTrigger"> {
+    return createNodeRef("executeWorkflowTrigger", params);
+  },
+
   googleCalendar(
     params: NodeParamsOf<"googleCalendar">,
     _options?: NodeOptions,
   ): NodeRef<"googleCalendar"> {
     return createNodeRef("googleCalendar", params);
+  },
+
+  googleSheets(
+    params: NodeParamsOf<"googleSheets">,
+    _options?: NodeOptions,
+  ): NodeRef<"googleSheets"> {
+    return createNodeRef("googleSheets", params);
+  },
+
+  itemLists(
+    params: NodeParamsOf<"itemLists">,
+    _options?: NodeOptions,
+  ): NodeRef<"itemLists"> {
+    return createNodeRef("itemLists", params);
+  },
+
+  langchainAgent(
+    params: NodeParamsOf<"langchainAgent">,
+    _options?: NodeOptions,
+  ): NodeRef<"langchainAgent"> {
+    return createNodeRef("langchainAgent", params);
+  },
+
+  lmChatGoogleVertex(
+    params: NodeParamsOf<"lmChatGoogleVertex">,
+    _options?: NodeOptions,
+  ): NodeRef<"lmChatGoogleVertex"> {
+    return createNodeRef("lmChatGoogleVertex", params);
   },
 
   parallel(..._branches: Array<() => void>): void {

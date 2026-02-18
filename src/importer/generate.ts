@@ -58,8 +58,13 @@ const N8N_TYPE_TO_DSL_KIND: Record<string, string> = {
   "n8n-nodes-base.scheduleTrigger": "scheduleTrigger",
   "n8n-nodes-base.webhook": "webhookTrigger",
   "n8n-nodes-base.googleCalendarTrigger": "googleCalendarTrigger",
+  "n8n-nodes-base.formTrigger": "formTrigger",
+  "n8n-nodes-base.formtrigger": "formTrigger",
+  "n8n-nodes-base.executeWorkflowTrigger": "executeWorkflowTrigger",
+  "n8n-nodes-base.executeworkflowtrigger": "executeWorkflowTrigger",
   "n8n-nodes-base.httpRequest": "httpRequest",
   "n8n-nodes-base.executeworkflow": "executeWorkflow",
+  "n8n-nodes-base.executeWorkflow": "executeWorkflow",
   "n8n-nodes-base.code": "code",
   "n8n-nodes-base.aggregate": "aggregate",
   "n8n-nodes-base.filter": "filter",
@@ -75,6 +80,10 @@ const N8N_TYPE_TO_DSL_KIND: Record<string, string> = {
   "n8n-nodes-base.wait": "wait",
   "n8n-nodes-base.noOp": "noOp",
   "n8n-nodes-base.googleCalendar": "googleCalendar",
+  "n8n-nodes-base.googleSheets": "googleSheets",
+  "n8n-nodes-base.itemLists": "itemLists",
+  "@n8n/n8n-nodes-langchain.agent": "langchainAgent",
+  "@n8n/n8n-nodes-langchain.lmChatGoogleVertex": "lmChatGoogleVertex",
 };
 
 const TRIGGER_N8N_TYPES = new Set([
@@ -82,6 +91,10 @@ const TRIGGER_N8N_TYPES = new Set([
   "n8n-nodes-base.scheduleTrigger",
   "n8n-nodes-base.webhook",
   "n8n-nodes-base.googleCalendarTrigger",
+  "n8n-nodes-base.formTrigger",
+  "n8n-nodes-base.formtrigger",
+  "n8n-nodes-base.executeWorkflowTrigger",
+  "n8n-nodes-base.executeworkflowtrigger",
 ]);
 
 const CONTROL_FLOW_TYPES = new Set([
@@ -1245,7 +1258,7 @@ function isEffectivelyEmptyExtras(value: unknown): boolean {
 }
 
 function isOptionalParamsNode(dslKind: string): boolean {
-  return dslKind === "manualTrigger" || dslKind === "noOp";
+  return dslKind === "manualTrigger" || dslKind === "noOp" || dslKind === "executeWorkflowTrigger";
 }
 
 // ── Trigger reference helpers ─────────────────────────────────────────────────

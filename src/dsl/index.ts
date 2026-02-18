@@ -15,4 +15,6 @@ export const TRIGGER_NODE_KINDS: ReadonlySet<string> = new Set([
   "scheduleTrigger",
   "webhookTrigger",
   "googleCalendarTrigger",
+  "formTrigger",
+  "executeWorkflowTrigger",
 ]);

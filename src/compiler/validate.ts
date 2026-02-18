@@ -22,6 +22,8 @@ const TRIGGER_NODE_TYPES = new Set<string>([
   "n8n-nodes-base.scheduleTrigger",
   "n8n-nodes-base.webhook",
   "n8n-nodes-base.googleCalendarTrigger",
+  "n8n-nodes-base.formTrigger",
+  "n8n-nodes-base.executeWorkflowTrigger",
 ]);
 
 export function validateWorkflow(file: string, workflow: WorkflowIR): ValidateWorkflowResult {

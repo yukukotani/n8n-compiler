@@ -35,6 +35,10 @@ const SUPPORTED_NODE_CALLS: readonly NodeKind[] = [
   "wait",
   "noOp",
   "googleCalendar",
+  "googleSheets",
+  "itemLists",
+  "langchainAgent",
+  "lmChatGoogleVertex",
 ];
 
 const SUPPORTED_NODE_CALL_SET = new Set<string>(SUPPORTED_NODE_CALLS);
