@@ -63,6 +63,7 @@ export type WebhookTriggerParams = {
   path?: string;
   httpMethod?: HttpMethod;
   responseMode?: "onReceived" | "lastNode" | "responseNode";
+  authentication?: "none" | "basicAuth" | "headerAuth" | string;
 };
 
 export type HttpRequestParams = {
@@ -92,9 +93,29 @@ export type LangchainAgentParams = JsonObject;
 
 export type LmChatGoogleVertexParams = JsonObject;
 
+export type ExecuteWorkflowInputSchemaField = {
+  id: string;
+  displayName: string;
+  type: string;
+  canBeUsedToMatch?: boolean;
+  defaultMatch?: boolean;
+  display?: boolean;
+  required?: boolean;
+};
+
+export type ExecuteWorkflowInputs = {
+  attemptToConvertTypes?: boolean;
+  convertFieldsToString?: boolean;
+  mappingMode?: string;
+  matchingColumns?: string[];
+  schema?: ExecuteWorkflowInputSchemaField[];
+  value?: JsonObject;
+};
+
 export type ExecuteWorkflowParams = {
   workflowId: string;
   mode?: "once" | "each";
+  workflowInputs?: ExecuteWorkflowInputs;
   options?: {
     waitForSubWorkflow?: boolean;
   };
@@ -144,13 +165,14 @@ export type LimitParams = {
 };
 
 export type MergeParams = {
-  mode: "append" | "combine" | "chooseBranch";
+  mode?: "append" | "combine" | "chooseBranch" | "multiplex";
   mergeByFields?: {
     values: Array<{
       field1: string;
       field2: string;
     }>;
   };
+  numberInputs?: number;
   options?: JsonObject;
 };
 

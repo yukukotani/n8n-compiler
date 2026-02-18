@@ -26,6 +26,7 @@ const NORMALIZERS: Record<string, ParamNormalizer> = {
   "n8n-nodes-base.if": normalizeIf,
   "n8n-nodes-base.switch": normalizeSwitch,
   "n8n-nodes-base.scheduleTrigger": normalizeScheduleTrigger,
+  "n8n-nodes-base.executeWorkflow": normalizeExecuteWorkflow,
 };
 
 /**
@@ -241,6 +242,44 @@ function normalizeScheduleEntry(entry: JsonObject): JsonObject {
     default:
       return entry;
   }
+}
+
+/**
+ * executeWorkflow: normalize ResourceLocator objects in `workflowId`
+ * to plain string values.
+ *
+ * n8n stores: `{ __rl: true, value: "abc123", cachedResultName: "...", mode: "list" }`
+ * DSL expects: `"abc123"`
+ */
+function normalizeExecuteWorkflow(_typeVersion: number, params: JsonObject): JsonObject {
+  const result = { ...params };
+
+  if (isResourceLocator(result.workflowId)) {
+    result.workflowId = (result.workflowId as ResourceLocator).value;
+  }
+
+  return result;
+}
+
+/**
+ * n8n ResourceLocator object shape.
+ * Used by various nodes to reference resources (workflows, calendars, sheets, etc.)
+ * via the n8n UI. Contains the actual value plus UI cache metadata.
+ */
+type ResourceLocator = {
+  __rl: true;
+  value: string;
+  mode?: string;
+  cachedResultName?: string;
+  cachedResultUrl?: string;
+};
+
+function isResourceLocator(value: unknown): value is ResourceLocator {
+  return (
+    isPlainObject(value) &&
+    (value as Record<string, unknown>).__rl === true &&
+    typeof (value as Record<string, unknown>).value === "string"
+  );
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
