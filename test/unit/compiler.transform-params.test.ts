@@ -395,6 +395,37 @@ describe("transformParameters", () => {
       expect(result.jsonBody).toBe("={}");
     });
 
+    test("jsonBody object 内の ={{expr}} が {{expr}} に変換される", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        method: "POST",
+        jsonBody: {
+          summary: "hello",
+          dateTime: '={{$node["Google Calendar Trigger"].json.start.dateTime}}',
+        },
+      });
+
+      expect(typeof result.jsonBody).toBe("string");
+      const body = result.jsonBody as string;
+      expect(body.startsWith("=")).toBe(true);
+      // Expression should use {{ }} (not ={{ }}) inside JSON
+      expect(body).toContain("{{ $('Google Calendar Trigger').item.json.start.dateTime }}");
+      // Should NOT contain ={{ inside JSON values
+      expect(body).not.toContain('"={{');
+      // Literal values should be preserved
+      expect(body).toContain('"hello"');
+    });
+
+    test("jsonBody object 内の $() 式も {{ }} に変換される", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: {
+          id: '={{Math.floor(Math.random() * 999999999)}}',
+        },
+      });
+
+      const body = result.jsonBody as string;
+      expect(body).toBe('={"id":"{{ Math.floor(Math.random() * 999999999) }}"}');
+    });
+
     test("v1 でも jsonBody の object→文字列変換と method→requestMethod を両方行う", () => {
       const result = transformParameters("n8n-nodes-base.httpRequest", 1, {
         method: "POST",

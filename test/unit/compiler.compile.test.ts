@@ -1100,6 +1100,57 @@ test("compile は jsonBody の JS object を n8n の ={...} 形式に変換す�
   expect(httpNode?.parameters.jsonBody).toBe('={"foo":"bar","num":42}');
 });
 
+test("compile は jsonBody 内の raw 式を n8n の {{ expr }} 形式に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "jsonbody-expr",
+      settings: {},
+      triggers: [
+        n.googleCalendarTrigger(
+          { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          { name: "Google Calendar Trigger" },
+        ),
+      ],
+      execute(googleCalendar) {
+        n.httpRequest({
+          method: "POST",
+          url: "https://example.com/api",
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: {
+            summary: "hello",
+            dateTime: googleCalendar.start.dateTime,
+            requestId: Math.floor(Math.random() * 999999999),
+          },
+        });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "jsonbody-expr.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const httpNode = result.workflow.nodes[1];
+  const jsonBody = httpNode?.parameters.jsonBody as string;
+  expect(jsonBody.startsWith("=")).toBe(true);
+
+  // Trigger reference should use $('Name').item.json format in {{ }}
+  expect(jsonBody).toContain("{{ $('Google Calendar Trigger').item.json.start.dateTime }}");
+  // General expression should also be in {{ }} format
+  expect(jsonBody).toContain("{{ Math.floor(Math.random() * 999999999) }}");
+  // Literal values should be plain
+  expect(jsonBody).toContain('"hello"');
+});
+
 test("compile は面接ブロック相当のワークフローをコンパイルする", () => {
   const sourceText = `
     export default workflow({

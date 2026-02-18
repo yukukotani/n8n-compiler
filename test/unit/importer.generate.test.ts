@@ -1015,6 +1015,134 @@ describe("生成改善", () => {
     expect(result.code).toContain("execute()");
   });
 
+  test("jsonBody 内の {{ expr }} をトリガー参照で raw 式に変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "jsonbody-mustache-trigger",
+      nodes: [
+        {
+          name: "Google Calendar Trigger",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: {
+            method: "POST",
+            url: "https://example.com/api",
+            sendBody: true,
+            specifyBody: "json",
+            jsonBody: `={ "start": { "dateTime": "{{ $('Google Calendar Trigger').item.json.start.dateTime }}" }, "end": { "dateTime": "{{ $('Google Calendar Trigger').item.json.end.dateTime }}" } }`,
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        "Google Calendar Trigger": { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should have execute parameter for the trigger
+    expect(result.code).toContain("execute(googleCalendar)");
+    // Should use raw trigger references instead of mustache expressions
+    expect(result.code).toContain("googleCalendar.start.dateTime");
+    expect(result.code).toContain("googleCalendar.end.dateTime");
+    // Should NOT contain {{ expr }} strings
+    expect(result.code).not.toContain("{{ $(");
+    expect(result.code).not.toContain("{{$(");
+  });
+
+  test("jsonBody 内の {{ expr }} を一般式でも raw 式に変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "jsonbody-mustache-general",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: {
+            method: "POST",
+            url: "https://example.com/api",
+            sendBody: true,
+            specifyBody: "json",
+            jsonBody: '={ "requestId": "{{Math.floor(Math.random()*999999999)}}" }',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should use raw expression
+    expect(result.code).toContain("Math.floor(Math.random()*999999999)");
+    // Should NOT contain {{ }} wrapper
+    expect(result.code).not.toContain("{{Math.floor");
+  });
+
+  test("jsonBody 内の {{ expr }} ラウンドトリップ (トリガー参照)", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "jsonbody-mustache-roundtrip",
+      nodes: [
+        {
+          name: "Google Calendar Trigger",
+          type: "n8n-nodes-base.googleCalendarTrigger",
+          typeVersion: 1,
+          parameters: { calendarId: "test@example.com", triggerOn: "eventCreated" },
+          position: [0, 0],
+        },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: {
+            method: "POST",
+            url: "https://example.com/api",
+            sendBody: true,
+            specifyBody: "json",
+            jsonBody: `={ "dateTime": "{{ $('Google Calendar Trigger').item.json.start.dateTime }}" }`,
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        "Google Calendar Trigger": { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+    expect(genResult.code).toContain("googleCalendar.start.dateTime");
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "jsonbody-mustache-roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const httpNode = compileResult.workflow!.nodes[1];
+    // jsonBody should contain the trigger reference in n8n mustache format
+    expect(httpNode?.parameters.jsonBody).toContain("$('Google Calendar Trigger').item.json.start.dateTime");
+    expect(httpNode?.parameters.jsonBody).toMatch(/^\=/);
+  });
+
   test("実質空の options (全値が空文字) は削除される", () => {
     const workflow: N8nWorkflowInput = {
       name: "empty-options-values",

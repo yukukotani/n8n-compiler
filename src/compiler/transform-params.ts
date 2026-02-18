@@ -55,7 +55,7 @@ function transformHttpRequest(typeVersion: number, params: JsonObject): JsonObje
   if ("jsonBody" in result && result.jsonBody !== null && result.jsonBody !== undefined) {
     const jsonBody = result.jsonBody;
     if (typeof jsonBody === "object") {
-      result.jsonBody = `=${JSON.stringify(jsonBody)}`;
+      result.jsonBody = `=${serializeJsonBodyForN8n(jsonBody)}`;
     }
   }
 
@@ -274,6 +274,58 @@ function transformScheduleEntry(schedule: JsonObject): N8nInterval {
     default:
       return schedule;
   }
+}
+
+/**
+ * Custom JSON serializer for jsonBody that converts `={{expr}}` values
+ * to `{{ expr }}` mustache format suitable for n8n JSON templates.
+ *
+ * Also converts `$node["Name"].json` → `$('Name').item.json` and
+ * `$("Name")` → `$('Name')` to avoid double-quote conflicts in JSON strings.
+ */
+function serializeJsonBodyForN8n(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") {
+    if (value.startsWith("={{") && value.endsWith("}}")) {
+      const body = value.slice(3, -2);
+      const converted = convertExprForJsonBody(body);
+      return `"{{ ${converted} }}"`;
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(serializeJsonBodyForN8n).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const pairs = entries.map(([k, v]) => `${JSON.stringify(k)}:${serializeJsonBodyForN8n(v)}`);
+    return `{${pairs.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * Convert n8n expression references to single-quote format for JSON template embedding.
+ *
+ * - `$node["Name"].json` → `$('Name').item.json`
+ * - `$("Name")` → `$('Name')`
+ */
+function convertExprForJsonBody(expr: string): string {
+  let result = expr;
+  // $node["Name"].json → $('Name').item.json
+  result = result.replace(
+    /\$node\["([^"]+)"\]\.json/g,
+    (_, name) => `$('${name}').item.json`,
+  );
+  // $("Name") → $('Name')
+  result = result.replace(
+    /\$\("([^"]+)"\)/g,
+    (_, name) => `$('${name}')`,
+  );
+  return result;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

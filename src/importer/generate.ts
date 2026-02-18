@@ -1301,37 +1301,16 @@ function replaceTriggerReferences(body: string): { replaced: string; hadReplacem
 }
 
 /**
- * Check if the body is a valid identifier or member expression (e.g. `trigger.start.dateTime`).
- * Used to allow unwrapping of simple trigger parameter references.
+ * Check if a string is a valid JavaScript expression by attempting to parse it.
  */
-function isSimpleParamReference(body: string): boolean {
+function isValidJSExpression(body: string): boolean {
   try {
     const wrapped = `const _ = (${body});`;
     const result = oxcParseSync("expr.ts", wrapped, {
       lang: "ts",
       sourceType: "module",
     });
-
-    if (result.errors.length > 0) {
-      return false;
-    }
-
-    const stmt = result.program.body[0];
-    if (!stmt || stmt.type !== "VariableDeclaration") {
-      return false;
-    }
-
-    const declarations = (stmt as { declarations: Array<{ init: { type: string; expression?: { type: string } } | null }> }).declarations;
-    const init = declarations[0]?.init;
-    if (!init) {
-      return false;
-    }
-
-    const expr = init.type === "ParenthesizedExpression" && init.expression
-      ? init.expression
-      : init;
-
-    return expr.type === "Identifier" || expr.type === "MemberExpression";
+    return result.errors.length === 0;
   } catch {
     return false;
   }
@@ -1353,19 +1332,6 @@ const N8N_EXPRESSION_ONLY_GLOBALS =
 const N8N_DSL_GLOBALS = new Set(["DateTime", "Duration", "Interval"]);
 
 /**
- * Compound expression AST types that the compiler can serialise back into
- * `={{...}}` expression strings.
- */
-const COMPOUND_EXPRESSION_TYPES = new Set([
-  "CallExpression",
-  "NewExpression",
-  "BinaryExpression",
-  "UnaryExpression",
-  "LogicalExpression",
-  "ConditionalExpression",
-]);
-
-/**
  * Try to unwrap an n8n expression string (`={{...}}`) into raw JavaScript
  * that the compiler can serialise back.
  *
@@ -1383,7 +1349,7 @@ function tryUnwrapExpression(value: string): string | null {
   }
 
   // Replace $('Trigger Name').item.json → paramName before further checks
-  const { replaced, hadReplacement } = replaceTriggerReferences(body);
+  const { replaced } = replaceTriggerReferences(body);
   body = replaced;
 
   // Don't unwrap expressions that use n8n-only globals ($json, $node, etc.)
@@ -1391,14 +1357,8 @@ function tryUnwrapExpression(value: string): string | null {
     return null;
   }
 
-  // Parse the body as JavaScript and check if it's a compound expression
-  // Also allow simple param references (e.g. `trigger.start.dateTime`)
-  const isCompound = isCompoundJSExpression(body);
-  if (!isCompound) {
-    if (hadReplacement && isSimpleParamReference(body)) {
-      trackN8nGlobals(body);
-      return body;
-    }
+  // Must be a valid JavaScript expression
+  if (!isValidJSExpression(body)) {
     return null;
   }
 
@@ -1409,41 +1369,40 @@ function tryUnwrapExpression(value: string): string | null {
 }
 
 /**
- * Parses a string as a JavaScript expression and returns true if the
- * top-level AST node is a compound expression type.
+ * Try to unwrap a mustache expression string (`{{ expr }}`) into raw JavaScript.
+ * These appear inside parsed jsonBody objects (n8n JSON template syntax).
+ *
+ * Returns the raw JS expression body, or `null` if the value should stay
+ * as a quoted string.
  */
-function isCompoundJSExpression(body: string): boolean {
-  try {
-    const wrapped = `const _ = (${body});`;
-    const result = oxcParseSync("expr.ts", wrapped, {
-      lang: "ts",
-      sourceType: "module",
-    });
-
-    if (result.errors.length > 0) {
-      return false;
-    }
-
-    const stmt = result.program.body[0];
-    if (!stmt || stmt.type !== "VariableDeclaration") {
-      return false;
-    }
-
-    const declarations = (stmt as { declarations: Array<{ init: { type: string; expression?: { type: string } } | null }> }).declarations;
-    const init = declarations[0]?.init;
-    if (!init) {
-      return false;
-    }
-
-    // Unwrap the parentheses we added
-    const expr = init.type === "ParenthesizedExpression" && init.expression
-      ? init.expression
-      : init;
-
-    return COMPOUND_EXPRESSION_TYPES.has(expr.type);
-  } catch {
-    return false;
+function tryUnwrapMustacheExpression(value: string): string | null {
+  const match = value.match(/^\{\{([\s\S]+)\}\}$/);
+  if (!match) {
+    return null;
   }
+
+  let body = match[1]!.trim();
+  if (!body) {
+    return null;
+  }
+
+  // Replace $('Trigger Name').item.json → paramName
+  const { replaced } = replaceTriggerReferences(body);
+  body = replaced;
+
+  // Don't unwrap expressions that use n8n-only globals
+  if (N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
+    return null;
+  }
+
+  // Must be a valid JavaScript expression
+  if (!isValidJSExpression(body)) {
+    return null;
+  }
+
+  trackN8nGlobals(body);
+
+  return body;
 }
 
 /**
@@ -1510,10 +1469,15 @@ function serializeValue(value: unknown, indent: number): string {
     return "undefined";
   }
   if (typeof value === "string") {
-    // Try to unwrap n8n expression to raw JS
+    // Try to unwrap n8n expression ={{...}} to raw JS
     const unwrapped = tryUnwrapExpression(value);
     if (unwrapped !== null) {
       return unwrapped;
+    }
+    // Try to unwrap mustache expression {{...}} (e.g. inside jsonBody values)
+    const mustacheUnwrapped = tryUnwrapMustacheExpression(value);
+    if (mustacheUnwrapped !== null) {
+      return mustacheUnwrapped;
     }
     return JSON.stringify(value);
   }
