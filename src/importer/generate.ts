@@ -1843,6 +1843,10 @@ function serializeValue(value: unknown, indent: number): string {
     if (mustacheUnwrapped !== null) {
       return mustacheUnwrapped;
     }
+    // Use template literal for multiline strings (more readable than JSON.stringify with \n)
+    if (shouldUseTemplateLiteral(value)) {
+      return serializeAsTemplateLiteral(value);
+    }
     return JSON.stringify(value);
   }
   if (typeof value === "number" || typeof value === "boolean") {
@@ -1895,6 +1899,42 @@ function safeKey(key: string): string {
     return key;
   }
   return JSON.stringify(key);
+}
+
+// ── Template literal helpers ──────────────────────────────────────────────────
+
+/**
+ * Determines whether a string value should be serialized as a template literal
+ * instead of a JSON-quoted string. This improves readability for long multiline
+ * strings such as jsCode, systemMessage, and prompt text fields.
+ *
+ * Criteria: the string contains at least one newline character.
+ */
+function shouldUseTemplateLiteral(value: string): boolean {
+  return value.includes("\n");
+}
+
+/**
+ * Escape a string for safe embedding inside a template literal (backtick string).
+ *
+ * Escapes:
+ * - `\` → `\\`  (backslash must be escaped first)
+ * - `` ` `` → `` \` ``  (backtick delimiter)
+ * - `${` → `\${`  (prevent template interpolation)
+ */
+function escapeForTemplateLiteral(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
+}
+
+/**
+ * Serialize a string as a TypeScript template literal (backtick string).
+ * The result is a valid TS expression: `` `...` ``
+ */
+function serializeAsTemplateLiteral(value: string): string {
+  return "`" + escapeForTemplateLiteral(value) + "`";
 }
 
 function isSimpleObject(obj: JsonObject): boolean {

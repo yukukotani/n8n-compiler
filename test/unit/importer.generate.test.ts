@@ -1759,6 +1759,178 @@ describe("生成改善", () => {
 
     const sheetsNode = compileResult.workflow!.nodes[1];
     expect(sheetsNode?.type).toBe("n8n-nodes-base.googleSheets");
-    expect(sheetsNode?.typeVersion).toBe(1);
+     expect(sheetsNode?.typeVersion).toBe(1);
+  });
+
+  test("複数行の jsCode はテンプレートリテラルで出力される", () => {
+    const jsCode = `// Node: test
+const result = $input.first().json;
+return {
+  "hasRecord": result.exists === true,
+  "content": result.content || null
+};
+`;
+    const workflow: N8nWorkflowInput = {
+      name: "template-literal-jsCode",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "code_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Should use template literal (backtick), not JSON string with \n
+    expect(result.code).toContain("jsCode: `");
+    expect(result.code).not.toContain('jsCode: "');
+    // Should contain actual newlines, not escaped \n
+    expect(result.code).toContain("// Node: test\nconst result");
+  });
+
+  test("jsCode に ${} を含む複数行文字列が正しくエスケープされる", () => {
+    const jsCode = `const formatDate = (date) => {
+  const year = date.getFullYear();
+  return \`\${year}-\${String(date.getMonth() + 1).padStart(2, '0')}\`;
+};
+return formatDate(new Date());
+`;
+    const workflow: N8nWorkflowInput = {
+      name: "template-literal-escape",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "code_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Should use template literal
+    expect(result.code).toContain("jsCode: `");
+    // ${ should be escaped as \${ inside the template literal
+    expect(result.code).toContain("\\${year}");
+    expect(result.code).toContain("\\${String(date.getMonth()");
+  });
+
+  test("jsCode テンプレートリテラルのラウンドトリップ (generate → compile)", () => {
+    const jsCode = `// Node: 当該Qの計算
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  return \`\${year}-\${String(date.getMonth() + 1).padStart(2, '0')}\`;
+};
+return formatDate(new Date());
+`;
+    const workflow: N8nWorkflowInput = {
+      name: "template-literal-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "code_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+
+    const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const codeNode = compileResult.workflow!.nodes[1];
+    expect(codeNode?.type).toBe("n8n-nodes-base.code");
+    expect(codeNode?.parameters.jsCode).toBe(jsCode);
+  });
+
+  test("langchainAgent の text/systemMessage テンプレートリテラルのラウンドトリップ", () => {
+    const text = "=<!-- Node: AI -->\n\n与えられた情報:\n<name>\n{{ $('Node1').item.json.name }}\n</name>\n";
+    const systemMessage = "あなたは専門家です。\n\n# 入力情報\n\n- 対象：[入力]\n\n# ルール\n\n1. 項目を抽出\n2. 具体的に記述\n";
+
+    const workflow: N8nWorkflowInput = {
+      name: "langchain-template-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "langchainAgent_2",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: { promptType: "define", text, options: { systemMessage } },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "langchainAgent_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    // text and systemMessage should use template literal
+    expect(genResult.code).toContain("text: `");
+    expect(genResult.code).toContain("systemMessage: `");
+
+    const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const agentNode = compileResult.workflow!.nodes[1];
+    expect(agentNode?.parameters.text).toBe(text);
+    expect((agentNode?.parameters.options as any)?.systemMessage).toBe(systemMessage);
+  });
+
+  test("バッククォートを含む複数行文字列のラウンドトリップ", () => {
+    const jsCode = "const msg = `Hello ${name}`;\nreturn [{ json: { msg } }];\n";
+
+    const workflow: N8nWorkflowInput = {
+      name: "backtick-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "code_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+
+    const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const codeNode = compileResult.workflow!.nodes[1];
+    expect(codeNode?.parameters.jsCode).toBe(jsCode);
+  });
+
+  test("単一行文字列はテンプレートリテラルにしない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-template-for-short",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "set_2", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "hello world" }, position: [200, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "set_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    // Single-line strings should stay as JSON strings
+    expect(result.code).toContain('"hello world"');
+    expect(result.code).not.toContain('`hello world`');
   });
 });
