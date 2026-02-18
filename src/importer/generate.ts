@@ -22,7 +22,7 @@ type JsonObject = Record<string, unknown>;
 export type N8nWorkflowInput = {
   name: string;
   nodes: N8nNodeInput[];
-  connections: N8nConnectionsInput;
+  connections?: N8nConnectionsInput;
   settings?: JsonObject;
 };
 
@@ -30,7 +30,7 @@ export type N8nNodeInput = {
   name: string;
   type: string;
   typeVersion: number;
-  parameters: JsonObject;
+  parameters?: JsonObject;
   credentials?: Record<string, unknown>;
   position?: [number, number];
 };
@@ -236,12 +236,15 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   const nodeMap = new Map<string, GraphNode>();
   for (const node of workflow.nodes) {
     const dslKind = N8N_TYPE_TO_DSL_KIND[node.type] ?? null;
+    // n8n API may omit parameters/credentials for nodes with empty config
+    const params = node.parameters ?? {};
+    const creds = node.credentials ?? undefined;
     nodeMap.set(node.name, {
       name: node.name,
       type: node.type,
       typeVersion: node.typeVersion,
-      parameters: stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters)),
-      credentials: node.credentials,
+      parameters: stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, params)),
+      credentials: creds,
       dslKind,
       isTrigger: TRIGGER_N8N_TYPES.has(node.type),
       isControlFlow: CONTROL_FLOW_TYPES.has(node.type),
@@ -255,7 +258,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _referencedTriggers = new Set();
 
   // Build adjacency
-  const adjacency = buildAdjacency(workflow.connections);
+  const adjacency = buildAdjacency(workflow.connections ?? {});
   const loopBackEdges = detectLoopBackEdges(adjacency, nodeMap);
   const reverseAdj = buildReverseAdjacency(adjacency, loopBackEdges);
 
@@ -1075,7 +1078,7 @@ function generateTriggerCall(node: N8nNodeInput, graphNode: GraphNode): string {
     return `/* unsupported trigger: ${node.type} */`;
   }
 
-  const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters));
+  const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters ?? {}));
   const options = buildNodeOptions(graphNode);
 
   if (options) {

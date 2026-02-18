@@ -1169,4 +1169,42 @@ describe("生成改善", () => {
     expect(result.code).not.toContain("matchTerm");
     expect(result.code).not.toMatch(/options:\s*\{/);
   });
+
+  test("parameters が undefined のノードでもクラッシュせず生成できる", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "missing-params",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [0, 0] },
+        { name: "noOp_2", type: "n8n-nodes-base.noOp", typeVersion: 1, position: [200, 0] },
+        { name: "set_3", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "ok" }, position: [400, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "noOp_2", type: "main", index: 0 }]] },
+        noOp_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+    expect(result.code).toContain("n.manualTrigger()");
+    expect(result.code).toContain("n.noOp()");
+    expect(result.code).toContain('n.set({ value: "ok" })');
+  });
+
+  test("connections が undefined でもクラッシュせず生成できる", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-connections",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+      ],
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+    expect(result.code).toContain("n.manualTrigger()");
+  });
 });
