@@ -1655,6 +1655,74 @@ describe("生成改善", () => {
     expect(result.code).toContain("code2.b");
   });
 
+  test("テンプレート文字列内の $('Node') 参照は const 化しない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-const-for-template-refs",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "langchainAgent_3",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: {
+            // Long template text containing $('httpRequest_2') — NOT an ={{...}} expression
+            text: "=<!-- Summary -->\nResult: {{ $('httpRequest_2').item.json.data }}\nEnd.",
+            promptType: "define",
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "langchainAgent_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // httpRequest_2 is only referenced inside a template string (not an unwrappable expression),
+    // so it should NOT become a const variable
+    expect(result.code).not.toContain("const httpRequest");
+    // The template string should be preserved as-is
+    expect(result.code).toContain("$('httpRequest_2')");
+  });
+
+  test("$json を含む ={{...}} 式内の $('Node') 参照は const 化しない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-const-for-n8n-globals",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "set_3",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            // Expression contains $json (n8n-only global) so it won't be unwrapped
+            value: "={{ $('httpRequest_2').item.json.x + $json.y }}",
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // The expression contains $json so it can't be unwrapped — no const should be generated
+    expect(result.code).not.toContain("const httpRequest");
+  });
+
   test("v1 (旧形式) googleSheets の typeVersion もラウンドトリップする", () => {
     const original: N8nWorkflowInput = {
       name: "roundtrip-sheets-v1",

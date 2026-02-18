@@ -1452,16 +1452,22 @@ const RESERVED_VARIABLE_NAMES = new Set([
 
 /**
  * Scan all node parameters to find which non-trigger node names are referenced
- * by `$('...')` or `$("...")` patterns in expression strings.
+ * by `$('...')` or `$("...")` patterns in expression strings that will actually
+ * be unwrapped into JS code (where the reference gets replaced with a variable).
+ *
+ * Only strings matching `={{...}}` or `{{...}}` (full-string mustache) patterns
+ * are considered, since other strings (e.g. long template text) are emitted as
+ * plain string literals where `$('...')` stays as-is and no variable is used.
  */
 function scanForNodeReferences(
   nodeMap: Map<string, GraphNode>,
   triggerNames: Set<string>,
 ): Set<string> {
-  // Collect all expression strings from all nodes
+  // Collect only expression strings that would be unwrapped (and thus have
+  // their $('...') references replaced with variable names)
   const allExprStrings: string[] = [];
   for (const node of nodeMap.values()) {
-    collectStringsFromValue(node.parameters, allExprStrings);
+    collectUnwrappableExprStrings(node.parameters, allExprStrings);
   }
 
   const referenced = new Set<string>();
@@ -1500,6 +1506,50 @@ function collectStringsFromValue(value: unknown, strings: string[]): void {
   if (typeof value === "object" && value !== null) {
     for (const v of Object.values(value)) {
       collectStringsFromValue(v, strings);
+    }
+  }
+}
+
+/**
+ * Recursively collect string values that could be unwrapped into JS expressions
+ * (and thus have their `$('Node')` references replaced with variable names).
+ *
+ * Only strings matching these patterns are collected:
+ * - `={{...}}` format (n8n expression, processed by `tryUnwrapExpression`)
+ * - `{{...}}` format (mustache expression wrapping entire string, processed by `tryUnwrapMustacheExpression`)
+ *
+ * Strings containing n8n-only globals (`$json`, `$node`, etc.) are excluded
+ * since those expressions won't be unwrapped regardless.
+ */
+function collectUnwrappableExprStrings(value: unknown, strings: string[]): void {
+  if (typeof value === "string") {
+    // Check ={{...}} format
+    if (value.startsWith("={{") && value.endsWith("}}")) {
+      const body = value.slice(3, -2).trim();
+      if (body && !N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
+        strings.push(value);
+      }
+      return;
+    }
+    // Check {{...}} mustache format (entire string)
+    if (value.startsWith("{{") && value.endsWith("}}")) {
+      const body = value.slice(2, -2).trim();
+      if (body && !N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
+        strings.push(value);
+      }
+      return;
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectUnwrappableExprStrings(item, strings);
+    }
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value)) {
+      collectUnwrappableExprStrings(v, strings);
     }
   }
 }
