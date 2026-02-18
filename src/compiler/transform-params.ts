@@ -34,20 +34,29 @@ const TRANSFORMERS: Record<string, ParamTransformer> = {
  * HttpRequest v1 uses `requestMethod` instead of `method`.
  * v4+ uses `method` directly, so no transform is needed.
  *
+ * Also converts `jsonBody` from a plain JS object/array back to n8n's
+ * `={...}` expression format.
+ *
  * DSL:  { method: "GET", url: "https://..." }
  * n8n v1:  { requestMethod: "GET", url: "https://..." }
  * n8n v4+: { method: "GET", url: "https://..." }
+ *
+ * DSL:  { jsonBody: { foo: "bar" } }
+ * n8n:  { jsonBody: "={ \"foo\": \"bar\" }" }
  */
 function transformHttpRequest(typeVersion: number, params: JsonObject): JsonObject {
-  if (typeVersion >= 4) {
-    return params;
-  }
-
   const result = { ...params };
 
-  if ("method" in result) {
+  if (typeVersion < 4 && "method" in result) {
     result.requestMethod = result.method;
     delete result.method;
+  }
+
+  if ("jsonBody" in result && result.jsonBody !== null && result.jsonBody !== undefined) {
+    const jsonBody = result.jsonBody;
+    if (typeof jsonBody === "object") {
+      result.jsonBody = `=${JSON.stringify(jsonBody)}`;
+    }
   }
 
   return result;

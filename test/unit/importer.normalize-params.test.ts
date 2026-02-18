@@ -113,6 +113,69 @@ describe("normalizeParameters", () => {
     });
   });
 
+  describe("httpRequest jsonBody", () => {
+    test("={...} 形式の jsonBody を JS object に変換する", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        method: "POST",
+        url: "https://example.com",
+        sendBody: true,
+        specifyBody: "json",
+        jsonBody: '={ "foo": "bar" }',
+      });
+      expect(result).toEqual({
+        method: "POST",
+        url: "https://example.com",
+        sendBody: true,
+        specifyBody: "json",
+        jsonBody: { foo: "bar" },
+      });
+    });
+
+    test("ネストした JSON object も変換する", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: '={ "a": { "b": [1, 2] } }',
+      });
+      expect(result.jsonBody).toEqual({ a: { b: [1, 2] } });
+    });
+
+    test("配列の jsonBody も変換する", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: '=[1, 2, 3]',
+      });
+      expect(result.jsonBody).toEqual([1, 2, 3]);
+    });
+
+    test("={{...}} 形式はそのまま通す", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: "={{$json}}",
+      });
+      expect(result.jsonBody).toBe("={{$json}}");
+    });
+
+    test("= なしの普通の文字列はそのまま通す", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: "plain text",
+      });
+      expect(result.jsonBody).toBe("plain text");
+    });
+
+    test("不正な JSON はそのまま文字列で通す", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: "={ invalid json }",
+      });
+      expect(result.jsonBody).toBe("={ invalid json }");
+    });
+
+    test("v1 でも jsonBody を変換する", () => {
+      const result = normalizeParameters("n8n-nodes-base.httpRequest", 1, {
+        requestMethod: "POST",
+        jsonBody: '={ "x": 1 }',
+      });
+      expect(result.method).toBe("POST");
+      expect(result.jsonBody).toEqual({ x: 1 });
+    });
+  });
+
   describe("未知のノード", () => {
     test("パラメータをそのまま通す", () => {
       const result = normalizeParameters("n8n-nodes-base.unknown", 1, { foo: "bar" });

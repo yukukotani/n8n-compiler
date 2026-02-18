@@ -72,7 +72,7 @@ export type HttpRequestParams = {
   nodeCredentialType?: string;
   sendBody?: boolean;
   specifyBody?: "json" | "string" | "raw";
-  jsonBody?: string | ExpressionValue;
+  jsonBody?: string | ExpressionValue | JsonObject | unknown[];
   options?: JsonObject;
 };
 

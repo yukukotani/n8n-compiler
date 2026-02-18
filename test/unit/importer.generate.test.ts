@@ -716,6 +716,79 @@ describe("生成改善", () => {
     expect(result.code).not.toContain("additionalFields");
   });
 
+  test("jsonBody の ={...} 形式を JS object として import する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "jsonbody-import",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: {
+            method: "POST",
+            url: "https://example.com/api",
+            sendBody: true,
+            specifyBody: "json",
+            jsonBody: '={ "foo": "bar", "count": 42 }',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+    // Should be a JS object literal, not a string
+    expect(result.code).toContain("jsonBody: { foo: \"bar\", count: 42 }");
+    // Should NOT contain the raw ={...} string
+    expect(result.code).not.toContain('={ "foo"');
+  });
+
+  test("jsonBody の ={...} ラウンドトリップ（import → compile）", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "jsonbody-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "httpRequest_2",
+          type: "n8n-nodes-base.httpRequest",
+          typeVersion: 4.2,
+          parameters: {
+            method: "POST",
+            url: "https://example.com/api",
+            sendBody: true,
+            specifyBody: "json",
+            jsonBody: '={ "foo": "bar" }',
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "jsonbody-roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const httpNode = compileResult.workflow!.nodes[1];
+    expect(httpNode?.parameters.jsonBody).toBe('={"foo":"bar"}');
+  });
+
   test("={{ ... }} の compound expression (CallExpression) は raw JS として出力される", () => {
     const workflow: N8nWorkflowInput = {
       name: "unwrap-expr",

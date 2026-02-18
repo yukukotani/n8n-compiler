@@ -1066,6 +1066,40 @@ test("compile は httpRequest v4.2 の method をそのまま保持する", () =
   expect(httpNode?.parameters.sendBody).toBe(true);
 });
 
+test("compile は jsonBody の JS object を n8n の ={...} 形式に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "jsonbody-object",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        n.httpRequest({
+          method: "POST",
+          url: "https://example.com/api",
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: { foo: "bar", num: 42 },
+        });
+      },
+    });
+  `;
+
+  const result = compile({
+    file: "jsonbody-object.ts",
+    sourceText,
+  });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const httpNode = result.workflow.nodes[1];
+  expect(httpNode?.parameters.jsonBody).toBe('={"foo":"bar","num":42}');
+});
+
 test("compile は面接ブロック相当のワークフローをコンパイルする", () => {
   const sourceText = `
     export default workflow({

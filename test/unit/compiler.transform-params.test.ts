@@ -358,6 +358,55 @@ describe("transformParameters", () => {
     });
   });
 
+  describe("httpRequest jsonBody", () => {
+    test("object の jsonBody を ={...} 文字列に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        method: "POST",
+        url: "https://example.com",
+        sendBody: true,
+        specifyBody: "json",
+        jsonBody: { foo: "bar" },
+      });
+
+      expect(result.jsonBody).toBe('={"foo":"bar"}');
+    });
+
+    test("配列の jsonBody を =[...] 文字列に変換する", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: [1, 2, 3],
+      });
+
+      expect(result.jsonBody).toBe("=[1,2,3]");
+    });
+
+    test("文字列の jsonBody はそのまま通す", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: "={{$json}}",
+      });
+
+      expect(result.jsonBody).toBe("={{$json}}");
+    });
+
+    test("={}（空オブジェクト）の jsonBody", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {
+        jsonBody: {},
+      });
+
+      expect(result.jsonBody).toBe("={}");
+    });
+
+    test("v1 でも jsonBody の object→文字列変換と method→requestMethod を両方行う", () => {
+      const result = transformParameters("n8n-nodes-base.httpRequest", 1, {
+        method: "POST",
+        jsonBody: { key: "value" },
+      });
+
+      expect(result.requestMethod).toBe("POST");
+      expect(result.method).toBeUndefined();
+      expect(result.jsonBody).toBe('={"key":"value"}');
+    });
+  });
+
   describe("httpRequest v4+", () => {
     test("method をそのまま保持する（v4 以上は requestMethod へのリネーム不要）", () => {
       const result = transformParameters("n8n-nodes-base.httpRequest", 4.2, {

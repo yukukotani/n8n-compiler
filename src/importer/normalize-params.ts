@@ -31,18 +31,46 @@ const NORMALIZERS: Record<string, ParamNormalizer> = {
 /**
  * httpRequest v1 uses `requestMethod` instead of `method`.
  * Reverse: rename `requestMethod` back to `method` for v1.
+ *
+ * Also normalizes `jsonBody` from n8n's `={...}` expression format
+ * to a plain JS object/array for ergonomic DSL usage.
  */
 function normalizeHttpRequest(typeVersion: number, params: JsonObject): JsonObject {
-  if (typeVersion >= 4) {
-    return params;
-  }
-
   const result = { ...params };
-  if ("requestMethod" in result) {
+
+  if (typeVersion < 4 && "requestMethod" in result) {
     result.method = result.requestMethod;
     delete result.requestMethod;
   }
+
+  if (typeof result.jsonBody === "string") {
+    result.jsonBody = tryParseJsonBodyExpression(result.jsonBody) as JsonObject[keyof JsonObject];
+  }
+
   return result;
+}
+
+/**
+ * n8n stores JSON body expressions as `={ "key": "value" }` (single `=` prefix).
+ * Parse these into plain JS objects/arrays for the DSL.
+ * Returns the original string if parsing fails or the format is not recognised.
+ */
+function tryParseJsonBodyExpression(value: string): unknown {
+  // Only handle `={...}` / `=[...]` format (single `=` prefix, NOT `={{...}}`)
+  if (!value.startsWith("=") || value.startsWith("={{")) {
+    return value;
+  }
+
+  const jsonStr = value.slice(1).trim();
+  if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return value;
+  }
 }
 
 /**
