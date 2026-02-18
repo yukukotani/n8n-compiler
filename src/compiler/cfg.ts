@@ -55,7 +55,8 @@ export type CfgStatement =
   | CfgIfStatement
   | CfgSwitchStatement
   | CfgForOfStatement
-  | CfgParallelStatement;
+  | CfgParallelStatement
+  | CfgConnectStatement;
 
 export type CfgNodeCallStatement = {
   type: "NodeCall";
@@ -103,6 +104,19 @@ export type CfgSwitchCase = {
 export type CfgParallelStatement = {
   type: "Parallel";
   branches: CfgStatement[][];
+};
+
+/**
+ * Non-main connection statement: `n.connect(sourceNodeCall, targetName, { type })`.
+ * Creates a source node that is NOT connected to the main execution flow,
+ * and an edge with the specified connection type to the target node.
+ */
+export type CfgConnectStatement = {
+  type: "Connect";
+  sourceCall: CfgDslNodeCall;
+  sourceDisplayName?: string;
+  targetNodeName: string;
+  connectionType: string;
 };
 
 export type CfgNodeCallOptions = {
@@ -298,6 +312,11 @@ function buildExpressionStatement(statement: Statement, context: BuildContext): 
   const parallelResult = tryBuildParallel(statement.expression, context);
   if (parallelResult) {
     return parallelResult;
+  }
+
+  const connectResult = tryBuildConnect(statement.expression, context);
+  if (connectResult) {
+    return connectResult;
   }
 
   const nodeCall = toNodeCall(statement.expression, context, {
@@ -915,6 +934,115 @@ function pickExpressionArgument(argument: Argument | undefined): Expression | nu
   }
 
   return argument;
+}
+
+/**
+ * Try to parse `n.connect(sourceNodeCall, targetName, { type })` as a CfgConnectStatement.
+ */
+function tryBuildConnect(expression: Expression, context: BuildContext): CfgStatement[] | null {
+  const call = readDslCall(expression);
+  if (!call || call.name !== "connect") {
+    return null;
+  }
+
+  if (call.arguments.length < 3) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.connect() requires 3 arguments: sourceNodeCall, targetName, { type }",
+      start: call.start,
+      end: call.end,
+    });
+    return [];
+  }
+
+  // First argument: n.<kind>(...) call for the source node
+  const sourceArg = call.arguments[0];
+  if (!sourceArg || sourceArg.type === "SpreadElement") {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.connect() first argument must be a n.<node>(...) call",
+      start: call.start,
+      end: call.end,
+    });
+    return [];
+  }
+
+  const sourceNodeCall = toNodeCall(sourceArg, context, {
+    start: sourceArg.start,
+    end: sourceArg.end,
+  });
+  if (!sourceNodeCall) {
+    return [];
+  }
+
+  // Extract display name from options.name of the source node call
+  const sourceDisplayName = sourceNodeCall.options?.name;
+
+  // Second argument: target node display name (string literal)
+  const targetArg = call.arguments[1];
+  if (
+    !targetArg ||
+    targetArg.type === "SpreadElement" ||
+    targetArg.type !== "Literal" ||
+    typeof targetArg.value !== "string"
+  ) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.connect() second argument must be a string literal (target node name)",
+      start: targetArg?.start ?? call.start,
+      end: targetArg?.end ?? call.end,
+    });
+    return [];
+  }
+  const targetNodeName = targetArg.value;
+
+  // Third argument: { type: "ai_languageModel" }
+  const optionsArg = call.arguments[2];
+  if (
+    !optionsArg ||
+    optionsArg.type === "SpreadElement" ||
+    optionsArg.type !== "ObjectExpression"
+  ) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: 'n.connect() third argument must be an object like { type: "ai_languageModel" }',
+      start: optionsArg?.start ?? call.start,
+      end: optionsArg?.end ?? call.end,
+    });
+    return [];
+  }
+
+  const optionsParsed = parseExpressionAsJson(optionsArg);
+  if (!optionsParsed || typeof optionsParsed !== "object" || Array.isArray(optionsParsed)) {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: "n.connect() options must be a JSON object",
+      start: optionsArg.start,
+      end: optionsArg.end,
+    });
+    return [];
+  }
+
+  const connectionType = (optionsParsed as Record<string, unknown>).type;
+  if (typeof connectionType !== "string") {
+    pushDiagnostic(context, {
+      code: "E_UNSUPPORTED_STATEMENT",
+      message: 'n.connect() options must include a "type" string property',
+      start: optionsArg.start,
+      end: optionsArg.end,
+    });
+    return [];
+  }
+
+  return [
+    {
+      type: "Connect",
+      sourceCall: sourceNodeCall,
+      ...(sourceDisplayName && { sourceDisplayName }),
+      targetNodeName,
+      connectionType,
+    },
+  ];
 }
 
 function tryBuildParallel(expression: Expression, context: BuildContext): CfgStatement[] | null {

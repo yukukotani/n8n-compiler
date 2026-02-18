@@ -43,7 +43,7 @@ type N8nConnectionItem = {
 
 type N8nConnectionsInput = Record<
   string,
-  { main: N8nConnectionItem[][] }
+  Record<string, N8nConnectionItem[][]>
 >;
 
 export type GenerateResult = {
@@ -285,6 +285,13 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   // Build trigger reference map for $('Trigger Name') → param name replacement
   _triggerRefMap = buildTriggerRefMap(triggers);
 
+  // Collect non-main connections (e.g. ai_languageModel)
+  const nonMainConnections = collectNonMainConnections(workflow.connections ?? {});
+
+  // Determine nodes that are ONLY referenced via non-main connections (sub-nodes like ChatModels)
+  // These should not be treated as unsupported — they'll be generated via n.connect()
+  const nonMainNodeNames = new Set(nonMainConnections.map((c) => c.fromNode));
+
   // Validate all action nodes are supported
   for (const node of workflow.nodes) {
     if (TRIGGER_N8N_TYPES.has(node.type) || CONTROL_FLOW_TYPES.has(node.type)) {
@@ -335,6 +342,37 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
     2,
     errors,
   );
+
+  // Generate n.connect() calls for non-main connections
+  const connectLines: string[] = [];
+  if (nonMainConnections.length > 0) {
+    connectLines.push("");
+
+    for (const conn of nonMainConnections) {
+      const sourceNode = nodeMap.get(conn.fromNode);
+      if (!sourceNode || !sourceNode.dslKind) {
+        continue;
+      }
+
+      // Generate the source node call inline within n.connect()
+      const sourceParams = stripEmptyOptions(normalizeParameters(sourceNode.type, sourceNode.typeVersion, sourceNode.parameters));
+      const sourceParamsStr = serializeObject(sourceParams, 6);
+      const sourceOptions = buildNodeOptions(sourceNode);
+      // Always include name for sub-nodes so the connection target can be resolved
+      const sourceOptionsWithName: JsonObject = { ...(sourceOptions ?? {}) };
+      if (!sourceOptionsWithName.name) {
+        sourceOptionsWithName.name = sourceNode.name;
+      }
+      const sourceOptionsStr = serializeObject(sourceOptionsWithName, 6);
+
+      const pad = "    ";
+      connectLines.push(`${pad}n.connect(`);
+      connectLines.push(`${pad}  n.${sourceNode.dslKind}(${sourceParamsStr}, ${sourceOptionsStr}),`);
+      connectLines.push(`${pad}  ${JSON.stringify(conn.toNode)},`);
+      connectLines.push(`${pad}  { type: ${JSON.stringify(conn.connectionType)} },`);
+      connectLines.push(`${pad});`);
+    }
+  }
 
   if (errors.length > 0) {
     return { code: null, errors };
@@ -403,6 +441,9 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
     lines.push("  execute() {");
   }
   lines.push(...bodyLines);
+  if (connectLines.length > 0) {
+    lines.push(...connectLines);
+  }
   lines.push("  },");
   lines.push("});");
   lines.push("");
@@ -423,16 +464,17 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
 function buildAdjacency(connections: N8nConnectionsInput): AdjacencyMap {
   const adj: AdjacencyMap = new Map();
 
-  for (const [fromNode, conn] of Object.entries(connections)) {
-    if (!conn?.main) {
+  for (const [fromNode, connTypes] of Object.entries(connections)) {
+    const mainConn = connTypes?.main;
+    if (!mainConn) {
       continue;
     }
 
     const outputMap = adj.get(fromNode) ?? new Map<number, string[]>();
     adj.set(fromNode, outputMap);
 
-    for (let outputIndex = 0; outputIndex < conn.main.length; outputIndex++) {
-      const items = conn.main[outputIndex];
+    for (let outputIndex = 0; outputIndex < mainConn.length; outputIndex++) {
+      const items = mainConn[outputIndex];
       if (!items) {
         continue;
       }
@@ -445,6 +487,41 @@ function buildAdjacency(connections: N8nConnectionsInput): AdjacencyMap {
   }
 
   return adj;
+}
+
+/** Represents a non-main connection (e.g. ai_languageModel, ai_tool). */
+type NonMainConnection = {
+  fromNode: string;
+  toNode: string;
+  connectionType: string;
+};
+
+/**
+ * Collect all non-main connections from the workflow connections input.
+ * These are connections with types other than "main" (e.g. "ai_languageModel").
+ */
+function collectNonMainConnections(connections: N8nConnectionsInput): NonMainConnection[] {
+  const result: NonMainConnection[] = [];
+
+  for (const [fromNode, connTypes] of Object.entries(connections)) {
+    for (const [connType, outputs] of Object.entries(connTypes ?? {})) {
+      if (connType === "main") {
+        continue;
+      }
+      for (const items of outputs) {
+        if (!items) continue;
+        for (const item of items) {
+          result.push({
+            fromNode,
+            toNode: item.node,
+            connectionType: connType,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 function buildReverseAdjacency(adj: AdjacencyMap, loopBackEdges: LoopBackEdges): ReverseAdjacencyMap {

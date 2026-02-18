@@ -1,5 +1,6 @@
 import type {
   CfgBlock,
+  CfgConnectStatement,
   CfgDslNodeCall,
   CfgForOfStatement,
   CfgIfStatement,
@@ -146,6 +147,9 @@ function lowerStatement(statement: CfgStatement, context: LoweringContext): void
     case "Parallel":
       lowerParallelStatement(statement, context);
       return;
+    case "Connect":
+      lowerConnectStatement(statement, context);
+      return;
     default:
       return assertNever(statement);
   }
@@ -204,6 +208,52 @@ function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringCo
     : [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex }];
 
   context.frontier = mergeFrontiers(...caseFrontiers, defaultFrontier);
+}
+
+/**
+ * Lower a Connect statement: creates the source node (without main-flow connections)
+ * and creates an edge from the source to an existing target node with the specified connection type.
+ */
+function lowerConnectStatement(statement: CfgConnectStatement, context: LoweringContext): void {
+  const call = statement.sourceCall;
+  const n8nType = NODE_TYPE_BY_KIND[call.kind as keyof typeof NODE_TYPE_BY_KIND];
+  if (!n8nType) {
+    return;
+  }
+
+  // Create the source node (NOT connected to frontier)
+  context.counter += 1;
+  const sourceNode = createNodeIR({
+    kind: call.kind,
+    n8nType,
+    typeVersion: DEFAULT_TYPE_VERSION[call.kind],
+    counter: context.counter,
+    parameters: call.parameters,
+    credentials: call.options?.credentials,
+    position: call.options?.position,
+    displayName: statement.sourceDisplayName ?? call.options?.name,
+  });
+  context.workflow.nodes.push(sourceNode);
+
+  // Find the target node by display name
+  const targetNode = context.workflow.nodes.find(
+    (n) => (n.displayName ?? n.key) === statement.targetNodeName,
+  );
+  if (!targetNode) {
+    // Target not found — the node may not exist yet. Skip silently.
+    return;
+  }
+
+  // Create edge with the non-main connection type
+  context.workflow.edges.push(
+    createEdgeIR({
+      from: sourceNode.key,
+      to: targetNode.key,
+      fromOutputIndex: 0,
+      toInputIndex: 0,
+      connectionType: statement.connectionType,
+    }),
+  );
 }
 
 function lowerParallelStatement(statement: CfgParallelStatement, context: LoweringContext): void {

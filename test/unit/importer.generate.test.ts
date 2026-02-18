@@ -466,6 +466,115 @@ describe("ラウンドトリップ: generate → compile", () => {
   });
 });
 
+describe("非main接続 (AI sub-nodes)", () => {
+  test("ai_languageModel 接続のノードを n.connect() で生成する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "ai-agent-test",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "AI Agent",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: { promptType: "define", text: "Hello" },
+          position: [200, 0],
+        },
+        {
+          name: "Gemini Model",
+          type: "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+          typeVersion: 1,
+          parameters: { projectId: "my-project", modelName: "gemini-2.0-flash" },
+          credentials: { googleApi: { id: "cred-gcp", name: "GCP" } },
+          position: [200, 200],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "AI Agent", type: "main", index: 0 }]] },
+        "Gemini Model": { ai_languageModel: [[{ node: "AI Agent", type: "ai_languageModel", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should contain the agent call in main flow
+    expect(result.code).toContain("n.langchainAgent(");
+    // Should contain the model inside n.connect()
+    expect(result.code).toContain("n.connect(");
+    expect(result.code).toContain("n.lmChatGoogleVertex(");
+    expect(result.code).toContain('"AI Agent"');
+    expect(result.code).toContain('"ai_languageModel"');
+    // Should contain model name
+    expect(result.code).toContain('"Gemini Model"');
+  });
+
+  test("ai_languageModel 接続のラウンドトリップ (generate → compile)", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "ai-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "AI Agent",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: { promptType: "define", text: "Hello" },
+          position: [200, 0],
+        },
+        {
+          name: "Gemini Model",
+          type: "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+          typeVersion: 1,
+          parameters: { projectId: "my-project", modelName: "gemini-2.0-flash" },
+          credentials: { googleApi: { id: "cred-gcp", name: "GCP" } },
+          position: [200, 200],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "AI Agent", type: "main", index: 0 }]] },
+        "Gemini Model": { ai_languageModel: [[{ node: "AI Agent", type: "ai_languageModel", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "ai-roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    // Should have all 3 nodes
+    const nodeTypes = compileResult.workflow!.nodes.map((n) => n.type);
+    expect(nodeTypes).toContain("n8n-nodes-base.manualTrigger");
+    expect(nodeTypes).toContain("@n8n/n8n-nodes-langchain.agent");
+    expect(nodeTypes).toContain("@n8n/n8n-nodes-langchain.lmChatGoogleVertex");
+
+    // Should have ai_languageModel connection
+    const modelNode = compileResult.workflow!.nodes.find((n) => n.type === "@n8n/n8n-nodes-langchain.lmChatGoogleVertex");
+    expect(modelNode).toBeDefined();
+    const agentNode = compileResult.workflow!.nodes.find((n) => n.type === "@n8n/n8n-nodes-langchain.agent");
+    expect(agentNode).toBeDefined();
+
+    // Check ai_languageModel connection exists
+    const modelConnections = compileResult.workflow!.connections[modelNode!.name];
+    expect(modelConnections).toBeDefined();
+    expect(modelConnections!.ai_languageModel).toBeDefined();
+    expect(modelConnections!.ai_languageModel![0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ node: agentNode!.name, type: "ai_languageModel" }),
+      ]),
+    );
+
+    // Model node should have credentials
+    expect(modelNode!.credentials).toEqual({ googleApi: { id: "cred-gcp", name: "GCP" } });
+  });
+});
+
 describe("生成改善", () => {
   test("空の settings は省略される", () => {
     const workflow: N8nWorkflowInput = {

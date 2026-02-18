@@ -906,7 +906,7 @@ test("compile は n.parallel() で fan-out 接続をコンパイルする", () =
   ]);
 
   // All 3 nodes should be connected from the trigger (order may vary)
-  const output0 = result.workflow.connections.manualTrigger_1?.main[0];
+  const output0 = result.workflow.connections.manualTrigger_1?.main?.[0];
   expect(output0).toHaveLength(3);
   expect(output0).toEqual(
     expect.arrayContaining([
@@ -1231,14 +1231,14 @@ test("compile は面接ブロック相当のワークフローをコンパイル
 
   // Second if true → 3 parallel nodes
   const secondIfConnections = result.workflow.connections.if_3;
-  expect(secondIfConnections?.main[0]).toEqual(
+  expect(secondIfConnections?.main?.[0]).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ node: "work task" }),
       expect.objectContaining({ node: "personal task" }),
       expect.objectContaining({ node: "all-day blocker" }),
     ]),
   );
-  expect(secondIfConnections?.main[0]).toHaveLength(3);
+  expect(secondIfConnections?.main?.[0]).toHaveLength(3);
 
   // work task has credentials
   const workTask = result.workflow.nodes.find((n) => n.name === "work task");

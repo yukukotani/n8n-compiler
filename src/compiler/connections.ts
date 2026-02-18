@@ -2,13 +2,11 @@ import type { EdgeIR } from "./ir";
 
 type N8nConnectionItem = {
   node: string;
-  type: "main";
+  type: string;
   index: number;
 };
 
-type N8nNodeConnections = {
-  main: N8nConnectionItem[][];
-};
+type N8nNodeConnections = Record<string, N8nConnectionItem[][]>;
 
 export type N8nConnections = Record<string, N8nNodeConnections>;
 
@@ -18,17 +16,19 @@ export function buildN8nConnections(edges: EdgeIR[]): N8nConnections {
   const sortedEdges = [...edges].sort(compareEdgeForDeterministicOrder);
 
   for (const edge of sortedEdges) {
-    const byNode = (connections[edge.from] ??= { main: [] });
-    ensureOutputIndex(byNode.main, edge.fromOutputIndex);
+    const connType = edge.connectionType ?? "main";
+    const byNode = (connections[edge.from] ??= {});
+    const byType = (byNode[connType] ??= []);
+    ensureOutputIndex(byType, edge.fromOutputIndex);
 
-    const output = byNode.main[edge.fromOutputIndex];
+    const output = byType[edge.fromOutputIndex];
     if (!output) {
       throw new Error(`Missing output slot at index ${edge.fromOutputIndex}`);
     }
 
     output.push({
       node: edge.to,
-      type: "main",
+      type: connType,
       index: edge.toInputIndex,
     });
   }

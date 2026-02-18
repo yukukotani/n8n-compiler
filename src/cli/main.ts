@@ -191,7 +191,7 @@ async function runImportCommand(parsed: ParsedArgs): Promise<CliResult> {
     const result = generateWorkflowCode({
       name: workflow.name,
       nodes: workflow.nodes,
-      connections: workflow.connections as Record<string, { main: Array<Array<{ node: string; type: string; index: number }>> }>,
+      connections: workflow.connections as Record<string, Record<string, Array<Array<{ node: string; type: string; index: number }>>>>,
       settings: workflow.settings as Record<string, unknown>,
     });
 
@@ -280,7 +280,9 @@ async function runDeployCommand(parsed: ParsedArgs): Promise<CliResult> {
   try {
     const result = await deployWorkflow({
       client,
-      workflow: compileResult.workflow,
+      // Cast needed because N8nConnections uses string connection types
+      // while IConnections from n8n-workflow uses NodeConnectionType enum
+      workflow: compileResult.workflow as unknown as import("../n8n/client").N8nWorkflowDraftPayload,
       mode: modeOption as DeployMode,
       id: getStringOption(parsed.options, "id"),
       activate: hasFlag(parsed.options, "activate"),

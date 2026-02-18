@@ -25,6 +25,8 @@ export type EdgeIR = {
   to: string;
   toInputIndex: number;
   kind?: "loop-back";
+  /** Connection type. Defaults to "main". Non-main types include "ai_languageModel", "ai_tool", etc. */
+  connectionType?: string;
 };
 
 type CreateWorkflowIRFrameInput = {
@@ -50,6 +52,7 @@ type CreateEdgeIRInput = {
   fromOutputIndex?: number;
   toInputIndex?: number;
   kind?: "loop-back";
+  connectionType?: string;
 };
 
 export function createWorkflowIRFrame(input: CreateWorkflowIRFrameInput): WorkflowIR {
@@ -90,6 +93,7 @@ export function createEdgeIR(input: CreateEdgeIRInput): EdgeIR {
     to: input.to,
     toInputIndex,
     kind: input.kind,
+    connectionType: input.connectionType,
   };
 }
 

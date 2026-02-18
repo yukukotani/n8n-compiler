@@ -153,6 +153,8 @@ export function compile(input: CompileInput): CompileResult {
     ...edge,
     from: nameMap.get(edge.from) ?? edge.from,
     to: nameMap.get(edge.to) ?? edge.to,
+    // Preserve connectionType through name remapping
+    connectionType: edge.connectionType,
   }));
 
   return {

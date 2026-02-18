@@ -372,3 +372,12 @@ export type NodeOptions = {
   name?: string;
   position?: [number, number];
 };
+
+/**
+ * Options for `n.connect()` — creates a non-main connection between two nodes.
+ * Used for AI sub-node connections (ai_languageModel, ai_tool, ai_memory, etc.).
+ */
+export type ConnectOptions = {
+  /** Connection type name (e.g. "ai_languageModel", "ai_tool"). */
+  type: string;
+};

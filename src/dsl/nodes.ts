@@ -1,5 +1,6 @@
 import type {
   ConditionRef,
+  ConnectOptions,
   ExpressionValue,
   LoopIterable,
   LoopOptions,
@@ -199,6 +200,28 @@ export const n = {
     _options?: NodeOptions,
   ): NodeRef<"lmChatGoogleVertex"> {
     return createNodeRef("lmChatGoogleVertex", params);
+  },
+
+  /**
+   * Creates a non-main connection (e.g. ai_languageModel, ai_tool) between a source node
+   * and a target node identified by display name.
+   *
+   * The source node is created but NOT connected to the main execution flow.
+   * The compiler generates an edge with the specified connection type.
+   *
+   * @example
+   * n.connect(
+   *   n.lmChatGoogleVertex({ projectId: "my-project" }, { name: "My Model", credentials: ... }),
+   *   "My Agent",
+   *   { type: "ai_languageModel" }
+   * );
+   */
+  connect(
+    _sourceNode: NodeRef,
+    _targetNodeName: string,
+    _options: ConnectOptions,
+  ): void {
+    // no-op at runtime; the compiler handles this statically
   },
 
   parallel(..._branches: Array<() => void>): void {

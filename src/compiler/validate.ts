@@ -141,10 +141,18 @@ function validateReferencePhase(edges: EdgeIR[], nodes: NodeIR[], context: Valid
   }
 }
 
+/** Filter edges to only include "main" connections (no connectionType or connectionType === "main"). */
+function mainEdgesOnly(edges: EdgeIR[]): EdgeIR[] {
+  return edges.filter((e) => !e.connectionType || e.connectionType === "main");
+}
+
 function validateControlFlowPhase(edges: EdgeIR[], nodes: NodeIR[], context: ValidationContext): void {
-  validateIfWiring(nodes, edges, context);
-  validateSwitchWiring(nodes, edges, context);
-  validateLoopWiring(nodes, edges, context);
+  // Control-flow validation only applies to "main" connections.
+  // Non-main connections (ai_languageModel, ai_tool, etc.) are auxiliary and don't affect control flow.
+  const mainEdges = mainEdgesOnly(edges);
+  validateIfWiring(nodes, mainEdges, context);
+  validateSwitchWiring(nodes, mainEdges, context);
+  validateLoopWiring(nodes, mainEdges, context);
 }
 
 function validateIfWiring(nodes: NodeIR[], edges: EdgeIR[], context: ValidationContext): void {
