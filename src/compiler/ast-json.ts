@@ -275,11 +275,46 @@ function isNullLiteral(expression: Expression): boolean {
  * serialized as an n8n expression string when it appears as a parameter value.
  *
  * Compound expressions include function calls, arithmetic, logical operators, etc.
- * Simple identifiers and member expressions that are not node/loop variable references
- * are excluded to preserve existing behavior (they return null, causing a parse failure).
+ * Simple identifiers and plain member expressions (e.g. `foo.bar`) are excluded
+ * to preserve existing behavior (they return null, causing a parse failure).
+ *
+ * MemberExpression chains whose root object is a compound expression
+ * (e.g. `$('Node').item.json.field`) are included so that they get serialized
+ * as `={{$('Node').item.json.field}}` instead of silently failing.
  */
 function isCompoundExpression(expression: Expression): boolean {
   switch (expression.type) {
+    case "CallExpression":
+    case "NewExpression":
+    case "BinaryExpression":
+    case "UnaryExpression":
+    case "LogicalExpression":
+    case "ConditionalExpression":
+    case "ParenthesizedExpression":
+      return true;
+    case "MemberExpression":
+      return hasCompoundRoot(expression);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Walk down a MemberExpression chain to check if the root object is a
+ * compound expression (CallExpression, etc.). This enables serialization of
+ * patterns like `$('Node').item.json.field` while keeping plain `foo.bar`
+ * as non-compound (so that existing identifier-resolution behavior is preserved).
+ */
+function hasCompoundRoot(expression: Expression): boolean {
+  let current: Expression = expression;
+  while (current.type === "MemberExpression") {
+    current = current.object;
+  }
+  // After unwinding all MemberExpression layers, check if the root is compound.
+  // We intentionally don't recurse into isCompoundExpression here to avoid
+  // re-matching MemberExpression (which would be a no-op anyway since we've
+  // already unwound the chain).
+  switch (current.type) {
     case "CallExpression":
     case "NewExpression":
     case "BinaryExpression":

@@ -1316,4 +1316,122 @@ describe("生成改善", () => {
     expect(result.code).not.toBeNull();
     expect(result.code).toContain("n.manualTrigger()");
   });
+
+  test("googleSheets の typeVersion がラウンドトリップで保持される", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-sheets-version",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "評価軸取得",
+          type: "n8n-nodes-base.googleSheets",
+          typeVersion: 4.5,
+          parameters: {
+            authentication: "serviceAccount",
+            documentId: { __rl: true, mode: "url", value: "https://docs.google.com/spreadsheets/d/abc123" },
+            sheetName: { __rl: true, mode: "id", value: "0" },
+          },
+          credentials: { googleApi: { id: "cred-1", name: "My Cred" } },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "評価軸取得", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // typeVersion 4.5 is the compiler default for googleSheets, so it should NOT appear in options
+    expect(genResult.code).not.toContain("typeVersion");
+
+    const compileResult = compile({ file: "roundtrip-sheets.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const sheetsNode = compileResult.workflow!.nodes[1];
+    expect(sheetsNode?.type).toBe("n8n-nodes-base.googleSheets");
+    expect(sheetsNode?.typeVersion).toBe(4.5);
+  });
+
+  test("非デフォルト typeVersion が import → compile でラウンドトリップする", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-sheets-custom-version",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "googleSheets_2",
+          type: "n8n-nodes-base.googleSheets",
+          typeVersion: 4.7,
+          parameters: {
+            authentication: "serviceAccount",
+            documentId: { __rl: true, mode: "url", value: "https://docs.google.com/spreadsheets/d/abc123" },
+            sheetName: { __rl: true, mode: "id", value: "0" },
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "googleSheets_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // typeVersion 4.7 differs from default 4.5, so it should appear in options
+    expect(genResult.code).toContain("typeVersion: 4.7");
+
+    const compileResult = compile({ file: "roundtrip-sheets-custom.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const sheetsNode = compileResult.workflow!.nodes[1];
+    expect(sheetsNode?.type).toBe("n8n-nodes-base.googleSheets");
+    expect(sheetsNode?.typeVersion).toBe(4.7);
+  });
+
+  test("v1 (旧形式) googleSheets の typeVersion もラウンドトリップする", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-sheets-v1",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "googleSheets_2",
+          type: "n8n-nodes-base.googleSheets",
+          typeVersion: 1,
+          parameters: {
+            sheetId: "abc123",
+            range: "A:F",
+            rawData: true,
+          },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "googleSheets_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // typeVersion 1 differs from default 4.5, so it should appear in options
+    expect(genResult.code).toContain("typeVersion: 1");
+
+    const compileResult = compile({ file: "roundtrip-sheets-v1.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const sheetsNode = compileResult.workflow!.nodes[1];
+    expect(sheetsNode?.type).toBe("n8n-nodes-base.googleSheets");
+    expect(sheetsNode?.typeVersion).toBe(1);
+  });
 });

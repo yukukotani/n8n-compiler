@@ -103,6 +103,24 @@ const CONTROL_FLOW_TYPES = new Set([
   "n8n-nodes-base.switch",
 ]);
 
+/**
+ * Default typeVersion values used by the compiler (mirrors lowering.ts DEFAULT_TYPE_VERSION).
+ * Keyed by DSL kind. Nodes not listed here default to 1.
+ */
+const COMPILER_DEFAULT_TYPE_VERSION: Partial<Record<string, number>> = {
+  scheduleTrigger: 1.2,
+  httpRequest: 4.2,
+  googleCalendar: 1.3,
+  googleSheets: 4.5,
+};
+
+/**
+ * Returns the compiler's default typeVersion for a given DSL kind.
+ */
+function getCompilerDefaultTypeVersion(dslKind: string): number {
+  return COMPILER_DEFAULT_TYPE_VERSION[dslKind] ?? 1;
+}
+
 // ── Graph structures ──────────────────────────────────────────────────────────
 
 type GraphNode = {
@@ -1286,6 +1304,14 @@ function buildNodeOptions(node: GraphNode, suppressName = false): JsonObject | n
     const autoNamePattern = new RegExp(`^${node.dslKind}_\\d+$`);
     if (!autoNamePattern.test(node.name)) {
       options.name = node.name;
+    }
+  }
+
+  // Include typeVersion if it differs from the compiler's default for this node kind
+  if (node.dslKind) {
+    const defaultVersion = getCompilerDefaultTypeVersion(node.dslKind);
+    if (node.typeVersion !== defaultVersion) {
+      options.typeVersion = node.typeVersion;
     }
   }
 

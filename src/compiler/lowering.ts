@@ -23,6 +23,7 @@ export type TriggerInput = {
   credentials?: Record<string, { id: string; name?: string }>;
   name?: string;
   position?: [number, number];
+  typeVersion?: number;
   variableName?: string;
 };
 
@@ -79,6 +80,7 @@ const DEFAULT_TYPE_VERSION: Partial<Record<string, number>> = {
   scheduleTrigger: 1.2,
   httpRequest: 4.2,
   googleCalendar: 1.3,
+  googleSheets: 4.5,
 };
 
 export function lowerControlFlowGraphToIR(input: LowerControlFlowGraphToIRInput): WorkflowIR {
@@ -104,7 +106,7 @@ function appendTriggers(triggers: TriggerInput[], context: LoweringContext): voi
     const node = createNodeIR({
       kind: trigger.kind,
       n8nType,
-      typeVersion: DEFAULT_TYPE_VERSION[trigger.kind],
+      typeVersion: trigger.typeVersion ?? DEFAULT_TYPE_VERSION[trigger.kind],
       counter: context.counter,
       parameters: trigger.parameters,
       credentials: trigger.credentials,
@@ -226,7 +228,7 @@ function lowerConnectStatement(statement: CfgConnectStatement, context: Lowering
   const sourceNode = createNodeIR({
     kind: call.kind,
     n8nType,
-    typeVersion: DEFAULT_TYPE_VERSION[call.kind],
+    typeVersion: call.options?.typeVersion ?? DEFAULT_TYPE_VERSION[call.kind],
     counter: context.counter,
     parameters: call.parameters,
     credentials: call.options?.credentials,
@@ -275,7 +277,7 @@ function appendNode(
   const node = createNodeIR({
     kind: call.kind,
     n8nType: NODE_TYPE_BY_KIND[call.kind],
-    typeVersion: DEFAULT_TYPE_VERSION[call.kind],
+    typeVersion: call.options?.typeVersion ?? DEFAULT_TYPE_VERSION[call.kind],
     counter: context.counter,
     variableName,
     parameters: call.parameters,

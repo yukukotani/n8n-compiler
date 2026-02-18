@@ -371,6 +371,7 @@ export type NodeOptions = {
   credentials?: Record<string, { id: string; name?: string }>;
   name?: string;
   position?: [number, number];
+  typeVersion?: number;
 };
 
 /**

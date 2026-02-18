@@ -405,6 +405,7 @@ function parseTriggers(
     let credentials: Record<string, { id: string; name?: string }> | undefined;
     let triggerDisplayName: string | undefined;
     let triggerPosition: [number, number] | undefined;
+    let triggerTypeVersion: number | undefined;
     if (secondArg && secondArg.type !== "SpreadElement" && secondArg.type === "ObjectExpression") {
       const parsed = parseExpressionAsJson(secondArg, new Map(), undefined, bindings);
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -423,6 +424,9 @@ function parseTriggers(
         ) {
           triggerPosition = opts.position as [number, number];
         }
+        if (typeof opts.typeVersion === "number") {
+          triggerTypeVersion = opts.typeVersion;
+        }
       }
     }
 
@@ -432,6 +436,7 @@ function parseTriggers(
       ...(credentials && { credentials }),
       ...(triggerDisplayName && { name: triggerDisplayName }),
       ...(triggerPosition && { position: triggerPosition }),
+      ...(triggerTypeVersion != null && { typeVersion: triggerTypeVersion }),
     });
   }
 

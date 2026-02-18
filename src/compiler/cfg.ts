@@ -123,6 +123,7 @@ export type CfgNodeCallOptions = {
   credentials?: Record<string, { id: string; name?: string }>;
   name?: string;
   position?: [number, number];
+  typeVersion?: number;
 };
 
 export type CfgDslNodeCall = {
@@ -1157,6 +1158,10 @@ function parseNodeCallOptions(
     typeof obj.position[1] === "number"
   ) {
     options.position = obj.position as [number, number];
+  }
+
+  if (typeof obj.typeVersion === "number") {
+    options.typeVersion = obj.typeVersion;
   }
 
   return Object.keys(options).length > 0 ? options : undefined;
