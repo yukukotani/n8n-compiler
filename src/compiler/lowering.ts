@@ -36,6 +36,8 @@ type LowerControlFlowGraphToIRInput = {
 type FrontierPort = {
   nodeKey: string;
   outputIndex: number;
+  /** Which input index to use when connecting to the next node. Defaults to 0. */
+  inputIndex: number;
 };
 
 type LoweringContext = {
@@ -116,7 +118,7 @@ function appendTriggers(triggers: TriggerInput[], context: LoweringContext): voi
     });
 
     context.workflow.nodes.push(node);
-    context.frontier.push({ nodeKey: node.key, outputIndex: 0 });
+    context.frontier.push({ nodeKey: node.key, outputIndex: 0, inputIndex: 0 });
   }
 }
 
@@ -167,12 +169,12 @@ function lowerIfStatement(statement: CfgIfStatement, context: LoweringContext): 
   const ifNodeKey = appendIfNode(statement.test, context);
   const consequentFrontier = lowerBranchWithFrontier(
     statement.consequent,
-    [{ nodeKey: ifNodeKey, outputIndex: 0 }],
+    [{ nodeKey: ifNodeKey, outputIndex: 0, inputIndex: 0 }],
     context,
   );
   const alternateFrontier = lowerBranchWithFrontier(
     statement.alternate,
-    [{ nodeKey: ifNodeKey, outputIndex: 1 }],
+    [{ nodeKey: ifNodeKey, outputIndex: 1, inputIndex: 0 }],
     context,
   );
 
@@ -183,12 +185,12 @@ function lowerForOfStatement(statement: CfgForOfStatement, context: LoweringCont
   const loopNodeKey = appendLoopNode(context);
   const bodyTerminalFrontier = lowerBranchWithFrontier(
     statement.body,
-    [{ nodeKey: loopNodeKey, outputIndex: 1 }],
+    [{ nodeKey: loopNodeKey, outputIndex: 1, inputIndex: 0 }],
     context,
   );
 
   context.workflow.edges.push(...buildLoopBackEdges(bodyTerminalFrontier, loopNodeKey));
-  context.frontier = [{ nodeKey: loopNodeKey, outputIndex: 0 }];
+  context.frontier = [{ nodeKey: loopNodeKey, outputIndex: 0, inputIndex: 0 }];
 }
 
 function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringContext): void {
@@ -196,7 +198,7 @@ function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringCo
   const caseFrontiers = statement.cases.map((caseClause, index) => {
     return lowerBranchWithFrontier(
       caseClause.consequent,
-      [{ nodeKey: switchNodeKey, outputIndex: index }],
+      [{ nodeKey: switchNodeKey, outputIndex: index, inputIndex: 0 }],
       context,
     );
   });
@@ -204,10 +206,10 @@ function lowerSwitchStatement(statement: CfgSwitchStatement, context: LoweringCo
   const defaultFrontier = statement.defaultCase
     ? lowerBranchWithFrontier(
         statement.defaultCase,
-        [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex }],
+        [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex, inputIndex: 0 }],
         context,
       )
-    : [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex }];
+    : [{ nodeKey: switchNodeKey, outputIndex: unmatchedOutputIndex, inputIndex: 0 }];
 
   context.frontier = mergeFrontiers(...caseFrontiers, defaultFrontier);
 }
@@ -260,8 +262,11 @@ function lowerConnectStatement(statement: CfgConnectStatement, context: Lowering
 
 function lowerParallelStatement(statement: CfgParallelStatement, context: LoweringContext): void {
   const savedFrontier = context.frontier;
-  const branchFrontiers = statement.branches.map((branch) => {
-    return lowerBranchWithFrontier(branch, savedFrontier, context);
+  const branchFrontiers = statement.branches.map((branch, branchIndex) => {
+    const frontier = lowerBranchWithFrontier(branch, savedFrontier, context);
+    // Tag each branch's frontier ports with the branch index so that
+    // the next node receives each parallel branch on a separate input.
+    return frontier.map((port) => ({ ...port, inputIndex: branchIndex }));
   });
 
   context.frontier = mergeFrontiers(...branchFrontiers);
@@ -288,7 +293,7 @@ function appendNode(
 
   context.workflow.nodes.push(node);
   context.workflow.edges.push(...buildConnectionsFromFrontier(context.frontier, node.key));
-  context.frontier = [{ nodeKey: node.key, outputIndex: 0 }];
+  context.frontier = [{ nodeKey: node.key, outputIndex: 0, inputIndex: 0 }];
 }
 
 function appendIfNode(test: CfgIfTest, context: LoweringContext): string {
@@ -372,6 +377,7 @@ function buildConnectionsFromFrontier(frontier: FrontierPort[], toNodeKey: strin
         from: port.nodeKey,
         fromOutputIndex: port.outputIndex,
         to: toNodeKey,
+        toInputIndex: port.inputIndex,
       }),
     );
   }

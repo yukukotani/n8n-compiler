@@ -120,6 +120,53 @@ describe("generateWorkflowCode", () => {
     expect(result.code).toContain('n.set({ value: "b" })');
   });
 
+  test("fan-out → 合流ノード → 後続ノードを正しく復元する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "parallel-convergence",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "set_2", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "a" }, position: [200, 0] },
+        { name: "set_3", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "b" }, position: [200, 200] },
+        { name: "merge_4", type: "n8n-nodes-base.merge", typeVersion: 1, parameters: { mode: "append" }, position: [400, 100] },
+        { name: "noOp_5", type: "n8n-nodes-base.noOp", typeVersion: 1, parameters: {}, position: [600, 100] },
+      ],
+      connections: {
+        manualTrigger_1: {
+          main: [[
+            { node: "set_2", type: "main", index: 0 },
+            { node: "set_3", type: "main", index: 0 },
+          ]],
+        },
+        set_2: { main: [[{ node: "merge_4", type: "main", index: 0 }]] },
+        set_3: { main: [[{ node: "merge_4", type: "main", index: 0 }]] },
+        merge_4: { main: [[{ node: "noOp_5", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).toContain("n.parallel(");
+    // merge and noOp should be OUTSIDE parallel, not inside a branch
+    expect(result.code).toContain("n.merge(");
+    expect(result.code).toContain("n.noOp()");
+
+    // Roundtrip: compile back and verify all edges are present
+    const compileResult = compile({ file: "parallel-convergence.ts", sourceText: result.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const connections = compileResult.workflow!.connections;
+    // Both set nodes should connect to merge
+    const set2Conn = connections["set_2"]?.main?.[0];
+    const set3Conn = connections["set_3"]?.main?.[0];
+    expect(set2Conn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "merge_4" })]));
+    expect(set3Conn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "merge_4" })]));
+    // merge should connect to noOp
+    const mergeConn = connections["merge_4"]?.main?.[0];
+    expect(mergeConn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "noOp_5" })]));
+  });
+
   test("credentials 付きノードの options を保持する", () => {
     const workflow: N8nWorkflowInput = {
       name: "creds-test",

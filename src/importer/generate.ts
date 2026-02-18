@@ -1145,8 +1145,15 @@ function generateParallelFromFanout(
 
   lines.push(`${pad}n.parallel(`);
 
+  // Generate each branch independently from the same base visited set.
+  // We must NOT merge branch visited sets into the parent until all branches
+  // are generated; otherwise later branches see earlier branches' nodes as
+  // already visited and convergence nodes get absorbed into the last branch.
+  const baseVisited = new Set(visited);
+  const allBranchVisited: Set<string>[] = [];
+
   for (const target of targets) {
-    const branchVisited = new Set(visited);
+    const branchVisited = new Set(baseVisited);
     const branchLines: string[] = [];
 
     if (!convergence.has(target)) {
@@ -1166,6 +1173,11 @@ function generateParallelFromFanout(
     lines.push(...branchLines);
     lines.push(`${pad}  },`);
 
+    allBranchVisited.push(branchVisited);
+  }
+
+  // Now merge all branch visited sets into the parent
+  for (const branchVisited of allBranchVisited) {
     for (const v of branchVisited) {
       visited.add(v);
     }
