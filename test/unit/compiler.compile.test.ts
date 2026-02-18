@@ -618,7 +618,7 @@ test("compile は executeWorkflow を n8n executeworkflow ノードとしてコ�
     "manualTrigger_1",
     "executeWorkflow_2",
   ]);
-  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.executeworkflow");
+  expect(result.workflow.nodes[1]?.type).toBe("n8n-nodes-base.executeWorkflow");
   expect(result.workflow.nodes[1]?.parameters).toEqual({
     workflowId: "wf_123",
     mode: "once",

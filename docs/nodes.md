@@ -41,7 +41,7 @@
 | P0 | `removeDuplicates` | `n8n-nodes-base.removeduplicates` | Data | 重複除去（実行内/実行間） |
 | P0 | `summarize` | `n8n-nodes-base.summarize` | Data | 集計（ピボット系）需要が高い |
 | P0 | `code` | `n8n-nodes-base.code` | Data/Logic | 取りこぼしユースケースの逃げ道として必要 |
-| P0 | `executeWorkflow` | `n8n-nodes-base.executeworkflow` | Flow | サブワークフロー分割・再利用に必須 |
+| P0 | `executeWorkflow` | `n8n-nodes-base.executeWorkflow` | Flow | サブワークフロー分割・再利用に必須 |
 
 ### P1（次点: 実運用の入口を強化）
 

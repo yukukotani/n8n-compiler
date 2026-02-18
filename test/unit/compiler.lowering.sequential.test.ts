@@ -404,7 +404,7 @@ test("lowerControlFlowGraphToIR は executeWorkflow を n8n executeworkflow ノ�
   expect(workflow.nodes[1]).toEqual(
     expect.objectContaining({
       key: "executeWorkflow_2",
-      n8nType: "n8n-nodes-base.executeworkflow",
+      n8nType: "n8n-nodes-base.executeWorkflow",
       parameters: {
         workflowId: "wf_123",
         mode: "once",

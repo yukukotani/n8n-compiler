@@ -50,7 +50,7 @@ const NODE_TYPE_BY_KIND = {
   formTrigger: "n8n-nodes-base.formTrigger",
   executeWorkflowTrigger: "n8n-nodes-base.executeWorkflowTrigger",
   httpRequest: "n8n-nodes-base.httpRequest",
-  executeWorkflow: "n8n-nodes-base.executeworkflow",
+  executeWorkflow: "n8n-nodes-base.executeWorkflow",
   code: "n8n-nodes-base.code",
   aggregate: "n8n-nodes-base.aggregate",
   filter: "n8n-nodes-base.filter",
