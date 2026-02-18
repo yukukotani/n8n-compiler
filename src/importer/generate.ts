@@ -168,6 +168,13 @@ let _triggerRefMap: Map<string, { paramName: string; triggerIndex: number }> = n
 let _referencedTriggers: Set<number> = new Set();
 
 /**
+ * Maps non-trigger node display name → variable name.
+ * Used to replace `$('Node Name').item.json.xxx` → `varName.xxx` in expressions
+ * and to generate `const varName = n.xxx(...)` for referenced nodes.
+ */
+let _nodeRefMap: Map<string, string> = new Map();
+
+/**
  * Canonical JSON representation with sorted keys for consistent comparison.
  */
 function canonicalJson(value: unknown): string {
@@ -325,6 +332,10 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
 
   // Find the first nodes after triggers (all triggers converge to same execution graph)
   const triggerNames = new Set(triggers.map((t) => t.name));
+
+  // Build non-trigger node reference map for $('Node Name') → variable name replacement
+  const referencedNodeNames = scanForNodeReferences(nodeMap, triggerNames);
+  _nodeRefMap = buildNodeRefMap(referencedNodeNames, nodeMap, _triggerRefMap);
   const firstNodes = new Set<string>();
   for (const triggerName of triggerNames) {
     const outputs = adjacency.get(triggerName);
@@ -473,6 +484,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _usedN8nGlobals = new Set();
   _triggerRefMap = new Map();
   _referencedTriggers = new Set();
+  _nodeRefMap = new Map();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -720,21 +732,32 @@ function generateNodeCall(
   const pad = " ".repeat(indent);
   const paramsStr = serializeObject(params, indent);
 
-  // Build options (credentials, name) — but use @name JSDoc for space-containing names
-  const hasSpaceInName = nodeHasSpaceName(node);
-  const options = buildNodeOptions(node, hasSpaceInName);
+  const refVarName = _nodeRefMap.get(nodeName);
+  const isReferenced = refVarName !== undefined;
 
-  // Emit @name JSDoc if the node name contains spaces
-  if (hasSpaceInName) {
+  // Build options (credentials, name) — but use @name JSDoc for space-containing names
+  // For referenced nodes with custom names, also suppress name from options and use @name instead
+  const hasSpaceInName = nodeHasSpaceName(node);
+  const hasCustomName = nodeHasCustomName(node);
+  const suppressNameInOptions = hasSpaceInName || (isReferenced && hasCustomName);
+  const options = buildNodeOptions(node, suppressNameInOptions);
+
+  // Emit @name JSDoc if the node has a custom name and it's either:
+  // - space-containing (existing behavior), or
+  // - the node is referenced (so the display name must be preserved via @name)
+  if (hasCustomName && (hasSpaceInName || isReferenced)) {
     lines.push(`${pad}/** @name ${node.name} */`);
   }
 
+  // Prefix with `const varName = ` if the node is referenced
+  const prefix = isReferenced ? `const ${refVarName} = ` : "";
+
   if (options) {
-    lines.push(`${pad}n.${node.dslKind}(${paramsStr}, ${serializeObject(options, indent)});`);
+    lines.push(`${pad}${prefix}n.${node.dslKind}(${paramsStr}, ${serializeObject(options, indent)});`);
   } else if (Object.keys(params).length === 0 && isOptionalParamsNode(node.dslKind)) {
-    lines.push(`${pad}n.${node.dslKind}();`);
+    lines.push(`${pad}${prefix}n.${node.dslKind}();`);
   } else {
-    lines.push(`${pad}n.${node.dslKind}(${paramsStr});`);
+    lines.push(`${pad}${prefix}n.${node.dslKind}(${paramsStr});`);
   }
 }
 
@@ -1330,13 +1353,18 @@ function buildNodeOptions(node: GraphNode, suppressName = false): JsonObject | n
   return Object.keys(options).length > 0 ? options : null;
 }
 
-/** Returns true if the node has a custom name (not auto-generated) that contains spaces. */
-function nodeHasSpaceName(node: GraphNode): boolean {
+/** Returns true if the node has a custom name (not auto-generated). */
+function nodeHasCustomName(node: GraphNode): boolean {
   if (!node.dslKind) {
     return false;
   }
   const autoNamePattern = new RegExp(`^${node.dslKind}_\\d+$`);
-  if (autoNamePattern.test(node.name)) {
+  return !autoNamePattern.test(node.name);
+}
+
+/** Returns true if the node has a custom name (not auto-generated) that contains spaces. */
+function nodeHasSpaceName(node: GraphNode): boolean {
+  if (!nodeHasCustomName(node)) {
     return false;
   }
   return node.name.includes(" ");
@@ -1406,6 +1434,153 @@ function buildTriggerRefMap(triggers: N8nNodeInput[]): Map<string, { paramName: 
   return map;
 }
 
+// ── Non-trigger node reference helpers ────────────────────────────────────────
+
+/**
+ * Reserved names that must not be used as generated variable names.
+ */
+const RESERVED_VARIABLE_NAMES = new Set([
+  "n", "workflow", "$", "DateTime", "Duration", "Interval",
+  // JS reserved words
+  "break", "case", "catch", "continue", "debugger", "default", "delete", "do",
+  "else", "finally", "for", "function", "if", "in", "instanceof", "new",
+  "return", "switch", "this", "throw", "try", "typeof", "var", "void",
+  "while", "with", "class", "const", "enum", "export", "extends", "import",
+  "super", "implements", "interface", "let", "package", "private", "protected",
+  "public", "static", "yield",
+]);
+
+/**
+ * Scan all node parameters to find which non-trigger node names are referenced
+ * by `$('...')` or `$("...")` patterns in expression strings.
+ */
+function scanForNodeReferences(
+  nodeMap: Map<string, GraphNode>,
+  triggerNames: Set<string>,
+): Set<string> {
+  // Collect all expression strings from all nodes
+  const allExprStrings: string[] = [];
+  for (const node of nodeMap.values()) {
+    collectStringsFromValue(node.parameters, allExprStrings);
+  }
+
+  const referenced = new Set<string>();
+  for (const [name, node] of nodeMap) {
+    if (triggerNames.has(name)) continue; // triggers handled separately
+    if (!node.dslKind) continue; // unsupported nodes can't become variables
+
+    const escaped = escapeNodeNameForExprRegex(name);
+    const pattern = new RegExp(`\\$\\(\\s*['"]${escaped}['"]\\s*\\)`);
+
+    for (const expr of allExprStrings) {
+      if (pattern.test(expr)) {
+        referenced.add(name);
+        break;
+      }
+    }
+  }
+
+  return referenced;
+}
+
+/**
+ * Recursively collect all string values from a JSON-like value.
+ */
+function collectStringsFromValue(value: unknown, strings: string[]): void {
+  if (typeof value === "string") {
+    strings.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectStringsFromValue(item, strings);
+    }
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value)) {
+      collectStringsFromValue(v, strings);
+    }
+  }
+}
+
+/**
+ * Build a mapping from referenced non-trigger node display name → variable name.
+ */
+function buildNodeRefMap(
+  referencedNames: Set<string>,
+  nodeMap: Map<string, GraphNode>,
+  triggerRefMap: Map<string, { paramName: string; triggerIndex: number }>,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const usedNames = new Set<string>(RESERVED_VARIABLE_NAMES);
+
+  // Reserve trigger param names
+  for (const { paramName } of triggerRefMap.values()) {
+    usedNames.add(paramName);
+  }
+
+  // Reserve shared const names
+  for (const constName of _sharedValueData.keys()) {
+    usedNames.add(constName);
+  }
+
+  // Iterate in nodeMap order (workflow JSON order) for deterministic naming
+  for (const [name, node] of nodeMap) {
+    if (!referencedNames.has(name)) continue;
+    if (!node.dslKind) continue;
+
+    let varName = node.dslKind;
+    if (usedNames.has(varName)) {
+      let suffix = 2;
+      while (usedNames.has(`${varName}${suffix}`)) suffix++;
+      varName = `${varName}${suffix}`;
+    }
+    usedNames.add(varName);
+
+    map.set(name, varName);
+  }
+
+  return map;
+}
+
+/**
+ * Escape a node name for use in a regex pattern that matches `$('Name')` or `$("Name")`.
+ * Handles regex special chars AND quote escaping (e.g. `'` may appear as `\'` in expressions).
+ */
+function escapeNodeNameForExprRegex(name: string): string {
+  // First, escape regex special chars
+  let escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Then, handle quote escaping: each ' could be escaped as \' in the expression
+  escaped = escaped.replace(/'/g, "(?:\\\\'|')");
+  escaped = escaped.replace(/"/g, '(?:\\\\"|")');
+  return escaped;
+}
+
+/**
+ * Replace `$('Node Name').item.json` / `.first().json` / `.json` patterns
+ * for non-trigger nodes in an expression body with the corresponding variable name.
+ */
+function replaceNodeReferences(body: string): { replaced: string; hadReplacement: boolean } {
+  let replaced = body;
+  let hadReplacement = false;
+
+  for (const [nodeName, varName] of _nodeRefMap) {
+    const escaped = escapeNodeNameForExprRegex(nodeName);
+    const pattern = new RegExp(
+      `\\$\\(\\s*['"]${escaped}['"]\\s*\\)(?:\\.item)?(?:\\.first\\(\\))?\\.json`,
+      "g",
+    );
+    const newBody = replaced.replace(pattern, varName);
+    if (newBody !== replaced) {
+      replaced = newBody;
+      hadReplacement = true;
+    }
+  }
+
+  return { replaced, hadReplacement };
+}
+
 /**
  * Replace `$('Trigger Name').item.json` / `.first().json` / `.json` patterns
  * in an expression body with the corresponding execute parameter name.
@@ -1415,7 +1590,7 @@ function replaceTriggerReferences(body: string): { replaced: string; hadReplacem
   let hadReplacement = false;
 
   for (const [triggerName, { paramName, triggerIndex }] of _triggerRefMap) {
-    const escaped = triggerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escaped = escapeNodeNameForExprRegex(triggerName);
     const pattern = new RegExp(
       `\\$\\(\\s*['"]${escaped}['"]\\s*\\)(?:\\.item)?(?:\\.first\\(\\))?\\.json`,
       "g",
@@ -1480,8 +1655,12 @@ function tryUnwrapExpression(value: string): string | null {
   }
 
   // Replace $('Trigger Name').item.json → paramName before further checks
-  const { replaced } = replaceTriggerReferences(body);
-  body = replaced;
+  const { replaced: afterTrigger } = replaceTriggerReferences(body);
+  body = afterTrigger;
+
+  // Replace $('Node Name').item.json → varName for non-trigger nodes
+  const { replaced: afterNode } = replaceNodeReferences(body);
+  body = afterNode;
 
   // Don't unwrap expressions that use n8n-only globals ($json, $node, etc.)
   if (N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
@@ -1518,8 +1697,12 @@ function tryUnwrapMustacheExpression(value: string): string | null {
   }
 
   // Replace $('Trigger Name').item.json → paramName
-  const { replaced } = replaceTriggerReferences(body);
-  body = replaced;
+  const { replaced: afterTrigger } = replaceTriggerReferences(body);
+  body = afterTrigger;
+
+  // Replace $('Node Name').item.json → varName for non-trigger nodes
+  const { replaced: afterNode } = replaceNodeReferences(body);
+  body = afterNode;
 
   // Don't unwrap expressions that use n8n-only globals
   if (N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {

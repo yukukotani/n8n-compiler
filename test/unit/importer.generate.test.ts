@@ -1443,6 +1443,218 @@ describe("生成改善", () => {
     expect(sheetsNode?.typeVersion).toBe(4.7);
   });
 
+  test("非トリガーノードへの $('Node') 参照を const 変数参照に変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "node-ref-test",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "set_3",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: '={{ $("httpRequest_2").item.json.data }}',
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Referenced node should be output as const
+    expect(result.code).toContain("const httpRequest = n.httpRequest(");
+    // Reference should be replaced with variable access
+    expect(result.code).toContain("httpRequest.data");
+    // Should NOT contain $('httpRequest_2')
+    expect(result.code).not.toContain("$('httpRequest_2')");
+    expect(result.code).not.toContain('$("httpRequest_2")');
+    // Should NOT import $ since all references were replaced
+    expect(result.code).not.toContain(", $");
+  });
+
+  test("非トリガーノードの .first().json 参照も const 変数参照に変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "node-ref-first",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "set_3",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: '={{ $("httpRequest_2").first().json.result }}',
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    expect(result.code).toContain("const httpRequest = n.httpRequest(");
+    expect(result.code).toContain("httpRequest.result");
+  });
+
+  test("スペースを含むノード名への $() 参照を const + @name で変換する", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "node-ref-space-name",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "My Request", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "set_3",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: "={{ $('My Request').item.json.data }}",
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "My Request", type: "main", index: 0 }]] },
+        "My Request": { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should have @name JSDoc and const
+    expect(result.code).toContain("/** @name My Request */");
+    expect(result.code).toContain("const httpRequest = n.httpRequest(");
+    // Reference should use variable
+    expect(result.code).toContain("httpRequest.data");
+    // Should NOT contain the $ reference
+    expect(result.code).not.toContain("$('My Request')");
+  });
+
+  test("非トリガーノード参照のラウンドトリップ (import → compile)", () => {
+    const original: N8nWorkflowInput = {
+      name: "roundtrip-node-ref",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        {
+          name: "set_3",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: '={{ $("httpRequest_2").item.json.result }}',
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(original);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+    expect(genResult.code).toContain("const httpRequest = n.httpRequest(");
+    expect(genResult.code).toContain("httpRequest.result");
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "roundtrip-node-ref.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    // Set node should reference the httpRequest node
+    const setNode = compileResult.workflow!.nodes[2];
+    expect(setNode?.type).toBe("n8n-nodes-base.set");
+    expect(setNode?.parameters.value).toContain("$node");
+    expect(setNode?.parameters.value).toContain(".json.result");
+  });
+
+  test("参照されていないノードは const にならない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "no-ref",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        { name: "set_3", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "hello" }, position: [400, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "set_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // No const should be generated since no node is referenced
+    expect(result.code).not.toContain("const ");
+  });
+
+  test("同じ dslKind の複数ノードが参照される場合、変数名が重複しない", () => {
+    const workflow: N8nWorkflowInput = {
+      name: "dedup-varnames",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode: "return [{ json: { a: 1 } }];" }, position: [200, 0] },
+        { name: "code_3", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode: "return [{ json: { b: 2 } }];" }, position: [200, 200] },
+        {
+          name: "set_4",
+          type: "n8n-nodes-base.set",
+          typeVersion: 1,
+          parameters: {
+            value: '={{ $("code_2").item.json.a + $("code_3").item.json.b }}',
+          },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: {
+          main: [[
+            { node: "code_2", type: "main", index: 0 },
+            { node: "code_3", type: "main", index: 0 },
+          ]],
+        },
+        code_2: { main: [[{ node: "set_4", type: "main", index: 0 }]] },
+        code_3: { main: [[{ node: "set_4", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Both code nodes should be const with different names
+    expect(result.code).toContain("const code = n.code(");
+    expect(result.code).toContain("const code2 = n.code(");
+    // References should use the variable names
+    expect(result.code).toContain("code.a");
+    expect(result.code).toContain("code2.b");
+  });
+
   test("v1 (旧形式) googleSheets の typeVersion もラウンドトリップする", () => {
     const original: N8nWorkflowInput = {
       name: "roundtrip-sheets-v1",
