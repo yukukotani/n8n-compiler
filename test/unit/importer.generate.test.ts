@@ -1906,7 +1906,7 @@ return formatDate(new Date());
     expect(compileResult.workflow).not.toBeNull();
 
     const agentNode = compileResult.workflow!.nodes[2];
-    // Compiled text uses ={{`...`}} format (semantically equivalent to =...{{ }}...)
+    // Compiled text uses mixed template format: =text{{ expr }}text
     expect(agentNode?.parameters.text).toContain("$node[");
     expect(agentNode?.parameters.text).toContain(".json.name");
     // systemMessage stays as-is (no expressions)
@@ -1994,8 +1994,8 @@ return formatDate(new Date());
 
     const agentNode = compileResult.workflow!.nodes.find(n => n.type === "@n8n/n8n-nodes-langchain.agent");
     const compiledText = agentNode?.parameters.text as string;
-    // Should use ={{`...`}} format
-    expect(compiledText).toMatch(/^=\{\{`/);
+    // Should use mixed template format: =text{{ expr }}text
+    expect(compiledText).toMatch(/^=<name>/);
     // Should contain the node reference
     expect(compiledText).toContain('$node["Node1"].json.name');
     // Should contain the .all().filter() chain with arrow functions

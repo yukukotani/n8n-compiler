@@ -205,11 +205,11 @@ export function resolveReferenceBody(
 }
 
 /**
- * Resolves a template literal into an n8n expression string.
+ * Resolves a template literal into an n8n mixed template string.
  *
  * - No expressions: `` `hello` `` → `"hello"` (plain string)
  * - With expressions: `` `https://example.com/${item.name}` ``
- *   → `` ={{`https://example.com/${$json.name}`}} ``
+ *   → `=https://example.com/{{ $json.name }}`
  */
 function resolveTemplateLiteral(
   expression: TemplateLiteral,
@@ -221,16 +221,16 @@ function resolveTemplateLiteral(
     return expression.quasis[0]?.value.cooked ?? null;
   }
 
-  // Build the inner template literal with resolved expressions
-  let inner = "";
+  // Build n8n mixed template: =text{{ expr }}text
+  let result = "=";
   for (let i = 0; i < expression.quasis.length; i++) {
     const quasi = expression.quasis[i];
     if (!quasi) {
       return null;
     }
 
-    // Use raw to preserve escape sequences (backtick escapes, etc.)
-    inner += quasi.value.raw;
+    // Use cooked to get the actual string content (escape sequences resolved)
+    result += quasi.value.cooked ?? quasi.value.raw;
 
     if (i < expression.expressions.length) {
       const expr = expression.expressions[i];
@@ -247,11 +247,11 @@ function resolveTemplateLiteral(
         return null;
       }
 
-      inner += "${" + body + "}";
+      result += "{{ " + body + " }}";
     }
   }
 
-  return "={{`" + inner + "`}}";
+  return result;
 }
 
 function parsePropertyKey(key: unknown): string | null {
