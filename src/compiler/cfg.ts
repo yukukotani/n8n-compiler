@@ -177,6 +177,8 @@ type BuildContext = {
   nodeVariables: Map<string, string>;
   loopVariables: Set<string>;
   bindings?: ReadonlyMap<string, JsonValue>;
+  /** Variable name from the most recently emitted node call (for $input resolution in jsCode) */
+  lastEmittedVarName: string | null;
 };
 
 type DslCall = {
@@ -212,6 +214,8 @@ export function buildControlFlowGraph(
     nodeVariables,
     loopVariables: new Set(),
     bindings: options?.bindings,
+    // Triggers are the implicit "preceding node" for the first statements in execute()
+    lastEmittedVarName: (triggerVariableNames ?? []).at(-1) ?? null,
   };
   const executeBody = pickExecuteBody(execute, context);
   const body = buildStatements(executeBody, context);
@@ -275,7 +279,14 @@ function buildStatements(statements: Statement[], context: BuildContext): CfgSta
   const cfgStatements: CfgStatement[] = [];
 
   for (const statement of statements) {
-    cfgStatements.push(...buildStatement(statement, context));
+    const results = buildStatement(statement, context);
+    cfgStatements.push(...results);
+
+    // Track the last emitted node variable for $input resolution in jsCode
+    if (results.length > 0) {
+      const last = results[results.length - 1]!;
+      context.lastEmittedVarName = last.type === "Variable" ? last.name : null;
+    }
   }
 
   return cfgStatements;
@@ -1000,8 +1011,9 @@ function parseCodeNodeParameters(
     if (!key) continue;
 
     if (key === "jsCode") {
-      const jsCode = extractJsCodeFromExpression(property.value, context);
+      let jsCode = extractJsCodeFromExpression(property.value, context);
       if (jsCode !== null) {
+        jsCode = replaceNodeVarsInJsCode(jsCode, context);
         result.jsCode = jsCode;
       }
       continue;
@@ -1043,6 +1055,31 @@ function extractJsCodeFromExpression(expression: Expression, context: BuildConte
   }
 
   return extractBlockBodyText(context.sourceText, fn.body);
+}
+
+/**
+ * Replace node variable references in jsCode with n8n runtime expressions.
+ *
+ * The most recently emitted node variable (`context.lastEmittedVarName`)
+ * represents the immediately preceding node and is replaced with
+ * `$input.first().json`.  Earlier node variables are replaced with
+ * `$node["displayName"].json`.
+ */
+function replaceNodeVarsInJsCode(jsCode: string, context: BuildContext): string {
+  if (context.nodeVariables.size === 0) return jsCode;
+
+  let result = jsCode;
+  for (const [varName, displayName] of context.nodeVariables) {
+    const replacement = varName === context.lastEmittedVarName
+      ? "$input.first().json"
+      : `$node[${JSON.stringify(displayName)}].json`;
+    result = result.replace(
+      new RegExp(`\\b${varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+      replacement,
+    );
+  }
+
+  return result;
 }
 
 /**

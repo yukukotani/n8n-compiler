@@ -2051,4 +2051,129 @@ return formatDate(new Date());
     expect(result.code).toContain('"hello world"');
     expect(result.code).not.toContain('`hello world`');
   });
+
+  test("jsCode 内の $input.first().json が前ノードの const 参照に変換される", () => {
+    const jsCode = `const result = $input.first().json;
+return {
+  "hasRecord": result.exists === true,
+  "content": result.content || null
+};
+`;
+    const workflow: N8nWorkflowInput = {
+      name: "code-input-ref",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        { name: "code_3", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [400, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "code_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // httpRequest should become a const (referenced by code node)
+    expect(result.code).toContain("const httpRequest = n.httpRequest(");
+    // $input.first().json should be replaced with httpRequest
+    expect(result.code).toContain("const result = httpRequest;");
+    // Should NOT contain $input.first().json
+    expect(result.code).not.toContain("$input.first().json");
+  });
+
+  test("jsCode 内の $input.item.json も前ノードの const 参照に変換される", () => {
+    const jsCode = "return { json: $input.item.json };";
+    const workflow: N8nWorkflowInput = {
+      name: "code-input-item-ref",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "set_2", type: "n8n-nodes-base.set", typeVersion: 1, parameters: { value: "test" }, position: [200, 0] },
+        { name: "code_3", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode, mode: "runOnceForEachItem" }, position: [400, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "set_2", type: "main", index: 0 }]] },
+        set_2: { main: [[{ node: "code_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // set should become a const
+    expect(result.code).toContain("const set = n.set(");
+    // $input.item.json should be replaced with set
+    expect(result.code).toContain("return { json: set };");
+  });
+
+  test("jsCode $input → const のラウンドトリップ (generate → compile)", () => {
+    const jsCode = `const result = $input.first().json;
+return {
+  "hasRecord": result.exists === true,
+  "content": result.content || null
+};
+`;
+    const workflow: N8nWorkflowInput = {
+      name: "code-input-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
+        { name: "code_3", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [400, 0] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "httpRequest_2", type: "main", index: 0 }]] },
+        httpRequest_2: { main: [[{ node: "code_3", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const codeNode = compileResult.workflow!.nodes.find(n => n.type === "n8n-nodes-base.code");
+    expect(codeNode).toBeDefined();
+    // jsCode should be restored to use $input.first().json
+    expect(codeNode!.parameters.jsCode).toBe(jsCode);
+  });
+
+  test("前ノードがない（複数 predecessor）場合は $input を変換しない", () => {
+    const jsCode = "return $input.first().json;";
+    const workflow: N8nWorkflowInput = {
+      name: "code-input-multi-pred",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "httpRequest_A", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://a.com" }, position: [200, 0] },
+        { name: "httpRequest_B", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://b.com" }, position: [200, 200] },
+        { name: "code_4", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [400, 100] },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[
+          { node: "httpRequest_A", type: "main", index: 0 },
+          { node: "httpRequest_B", type: "main", index: 0 },
+        ]] },
+        httpRequest_A: { main: [[{ node: "code_4", type: "main", index: 0 }]] },
+        httpRequest_B: { main: [[{ node: "code_4", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // $input should NOT be replaced (multiple predecessors → ambiguous)
+    expect(result.code).toContain("$input.first().json");
+  });
 });

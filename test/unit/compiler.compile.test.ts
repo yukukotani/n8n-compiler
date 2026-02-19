@@ -1962,3 +1962,98 @@ test("compile はトリガーの options.typeVersion で typeVersion を明示�
   expect(triggerNode?.type).toBe("n8n-nodes-base.formTrigger");
   expect(triggerNode?.typeVersion).toBe(2.1);
 });
+
+test("compile は jsCode 内の前ノード const 参照を $input.first().json に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "code-input-ref",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        const httpRequest = n.httpRequest({ method: "GET", url: "https://example.com" });
+        n.code({ jsCode: () => {
+          const result = httpRequest;
+          return [{ json: { ok: result.ok } }];
+        } });
+      },
+    });
+  `;
+
+  const result = compile({ file: "code-input-ref.ts", sourceText });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const codeNode = result.workflow.nodes.find(n => n.type === "n8n-nodes-base.code");
+  expect(codeNode).toBeDefined();
+  // httpRequest (the immediately preceding node) should become $input.first().json
+  expect(codeNode!.parameters.jsCode).toContain("$input.first().json");
+  expect(codeNode!.parameters.jsCode).not.toContain("httpRequest");
+});
+
+test("compile は jsCode 内の非直前ノード const 参照を $node[].json に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "code-node-ref",
+      settings: {},
+      triggers: [n.manualTrigger()],
+      execute() {
+        const httpRequest = n.httpRequest({ method: "GET", url: "https://example.com" });
+        n.set({ values: { status: "ok" } });
+        n.code({ jsCode: () => {
+          const data = httpRequest;
+          return [{ json: data }];
+        } });
+      },
+    });
+  `;
+
+  const result = compile({ file: "code-node-ref.ts", sourceText });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const codeNode = result.workflow.nodes.find(n => n.type === "n8n-nodes-base.code");
+  expect(codeNode).toBeDefined();
+  // httpRequest is NOT the immediately preceding node (set is), so it becomes $node reference
+  expect(codeNode!.parameters.jsCode).toContain('$node["httpRequest"].json');
+  expect(codeNode!.parameters.jsCode).not.toContain("$input");
+});
+
+test("compile は jsCode 内のトリガーパラメータ参照を $input.first().json に変換する", () => {
+  const sourceText = `
+    export default workflow({
+      name: "code-trigger-ref",
+      settings: {},
+      triggers: [n.webhookTrigger({ path: "test", httpMethod: "POST" })],
+      execute(webhook) {
+        n.code({ jsCode: () => {
+          const body = webhook.body;
+          return [{ json: body }];
+        } });
+      },
+    });
+  `;
+
+  const result = compile({ file: "code-trigger-ref.ts", sourceText });
+
+  expect(result.diagnostics).toEqual([]);
+  expect(result.workflow).not.toBeNull();
+
+  if (!result.workflow) {
+    throw new Error("workflow is unexpectedly null");
+  }
+
+  const codeNode = result.workflow.nodes.find(n => n.type === "n8n-nodes-base.code");
+  expect(codeNode).toBeDefined();
+  // webhook is the only preceding node variable, so it becomes $input.first().json
+  expect(codeNode!.parameters.jsCode).toContain("$input.first().json.body");
+});

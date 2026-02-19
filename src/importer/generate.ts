@@ -175,6 +175,14 @@ let _referencedTriggers: Set<number> = new Set();
 let _nodeRefMap: Map<string, string> = new Map();
 
 /**
+ * Maps code node display name → predecessor variable name for $input replacement in jsCode.
+ * When a code node's jsCode contains `$input.first().json` or `$input.item.json`,
+ * and it has a single predecessor, this maps the code node name to the predecessor's
+ * variable name (either a trigger param name or a const variable name).
+ */
+let _codeInputRefMap: Map<string, string> = new Map();
+
+/**
  * Canonical JSON representation with sorted keys for consistent comparison.
  */
 function canonicalJson(value: unknown): string {
@@ -335,7 +343,34 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
 
   // Build non-trigger node reference map for $('Node Name') → variable name replacement
   const referencedNodeNames = scanForNodeReferences(nodeMap, triggerNames);
+
+  // Scan code nodes for $input references and register their predecessors as referenced
+  const codeInputPredecessors = scanCodeNodeInputPredecessors(nodeMap, reverseAdj, triggerNames);
+  for (const predName of codeInputPredecessors.values()) {
+    if (!triggerNames.has(predName)) {
+      referencedNodeNames.add(predName);
+    }
+  }
+
   _nodeRefMap = buildNodeRefMap(referencedNodeNames, nodeMap, _triggerRefMap);
+
+  // Build code node → predecessor variable name map for $input replacement
+  _codeInputRefMap = new Map();
+  for (const [codeName, predName] of codeInputPredecessors) {
+    if (triggerNames.has(predName)) {
+      const trigRef = _triggerRefMap.get(predName);
+      if (trigRef) {
+        _codeInputRefMap.set(codeName, trigRef.paramName);
+        _referencedTriggers.add(trigRef.triggerIndex);
+      }
+    } else {
+      const varName = _nodeRefMap.get(predName);
+      if (varName) {
+        _codeInputRefMap.set(codeName, varName);
+      }
+    }
+  }
+
   const firstNodes = new Set<string>();
   for (const triggerName of triggerNames) {
     const outputs = adjacency.get(triggerName);
@@ -485,6 +520,7 @@ export function generateWorkflowCode(workflow: N8nWorkflowInput): GenerateResult
   _triggerRefMap = new Map();
   _referencedTriggers = new Set();
   _nodeRefMap = new Map();
+  _codeInputRefMap = new Map();
 
   return { code: lines.join("\n"), errors: [] };
 }
@@ -729,6 +765,15 @@ function generateNodeCall(
   }
 
   const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters));
+
+  // Replace $input.first().json / $input.item.json with predecessor variable name in jsCode
+  const inputVarName = _codeInputRefMap.get(nodeName);
+  if (inputVarName && typeof params.jsCode === "string") {
+    params.jsCode = (params.jsCode as string)
+      .replace(/\$input\.first\(\)\.json/g, inputVarName)
+      .replace(/\$input\.item\.json/g, inputVarName);
+  }
+
   const pad = " ".repeat(indent);
   const paramsStr = serializeObject(params, indent);
 
@@ -1681,6 +1726,51 @@ function escapeNodeNameForExprRegex(name: string): string {
   escaped = escaped.replace(/"/g, '(?:\\\\"|")');
   return escaped;
 }
+
+// ── Code node $input helpers ──────────────────────────────────────────────────
+
+/**
+ * Check if a jsCode string contains `$input.first().json` or `$input.item.json` references.
+ */
+function hasInputReference(jsCode: string): boolean {
+  return /\$input\.(?:first\(\)|item)\.json/.test(jsCode);
+}
+
+/**
+ * Scan code nodes for `$input.first().json` / `$input.item.json` usage.
+ * Returns a map from code node display name → single predecessor node display name.
+ */
+function scanCodeNodeInputPredecessors(
+  nodeMap: Map<string, GraphNode>,
+  reverseAdj: ReverseAdjacencyMap,
+  triggerNames: Set<string>,
+): Map<string, string> {
+  const result = new Map<string, string>();
+
+  for (const [name, node] of nodeMap) {
+    if (node.type !== "n8n-nodes-base.code") continue;
+
+    const jsCode = node.parameters.jsCode;
+    if (typeof jsCode !== "string" || !hasInputReference(jsCode)) continue;
+
+    // Find single predecessor
+    const predecessors = reverseAdj.get(name);
+    if (!predecessors || predecessors.size !== 1) continue;
+
+    const predName = [...predecessors][0]!;
+    const predNode = nodeMap.get(predName);
+    if (!predNode) continue;
+
+    // Predecessor must be a known node (trigger or action with dslKind)
+    if (!triggerNames.has(predName) && !predNode.dslKind) continue;
+
+    result.set(name, predName);
+  }
+
+  return result;
+}
+
+// ── Node reference replacement helpers ────────────────────────────────────────
 
 /**
  * Replace `$('Node Name').item.json` / `.first().json` / `.json` patterns
