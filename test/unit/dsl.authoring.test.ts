@@ -133,17 +133,18 @@ test("Schedule 型は type ごとに discriminated union として機能する",
 });
 
 test("code を ActionNode として定義でき、params をそのまま保持する", () => {
-  const node = n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+  const jsCodeFn = () => { return; };
+  const node = n.code({ jsCode: jsCodeFn, mode: "runOnceForAllItems" });
 
   expect(node.__brand).toBe("NodeRef");
   expect(node.kind).toBe("code");
-  expect(node.params).toEqual({ jsCode: "return items;", mode: "runOnceForAllItems" });
+  expect(node.params).toEqual({ jsCode: jsCodeFn, mode: "runOnceForAllItems" });
 
   const definition = workflow({
     name: "code-workflow",
     triggers: [n.manualTrigger()],
     execute() {
-      n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+      n.code({ jsCode: () => { return; }, mode: "runOnceForAllItems" });
     },
   }) satisfies WorkflowDefinition;
 

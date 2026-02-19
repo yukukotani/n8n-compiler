@@ -911,13 +911,13 @@ test("buildControlFlowGraph は execute 内の wait 呼び出しを受理する"
   }
 });
 
-test("buildControlFlowGraph は execute 内の code 呼び出しを受理し params を保持する", () => {
+test("buildControlFlowGraph は execute 内の code 呼び出しを受理し arrow function body を文字列化する", () => {
   const sourceText = `
     export default workflow({
       name: "sample",
       triggers: [n.manualTrigger()],
       execute() {
-        n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+        n.code({ jsCode: () => { return items; }, mode: "runOnceForAllItems" });
       },
     });
   `;
@@ -936,7 +936,9 @@ test("buildControlFlowGraph は execute 内の code 呼び出しを受理し par
     throw new Error("entry is unexpectedly null");
   }
 
-  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute, undefined, {
+    sourceText,
+  });
 
   expect(cfgResult.diagnostics).toEqual([]);
   expect(cfgResult.cfg).not.toBeNull();

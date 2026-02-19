@@ -1890,6 +1890,10 @@ function serializeObject(obj: JsonObject, baseIndent: number): string {
  * matches a shared const whose name equals the property key.
  */
 function serializeEntry(key: string, value: unknown, indent: number): string {
+  // jsCode is serialized as an arrow function body, not a string
+  if (key === "jsCode" && typeof value === "string") {
+    return `${safeKey(key)}: ${serializeAsArrowFunction(value, indent)}`;
+  }
   const constName = getSharedConstName(value);
   if (constName !== null) {
     if (constName === key) {
@@ -2014,6 +2018,33 @@ function escapeForTemplateLiteral(value: string): string {
  */
 function serializeAsTemplateLiteral(value: string): string {
   return "`" + escapeForTemplateLiteral(value) + "`";
+}
+
+// ── Arrow function serialization (jsCode) ─────────────────────────────────────
+
+/**
+ * Serialize a jsCode string as an arrow function body.
+ *
+ * Single-line code (no newlines): `() => { code }`
+ * Multi-line code: indented block with proper dedent.
+ *
+ * For multi-line, `await`-containing code is emitted as `async () => { ... }`.
+ */
+function serializeAsArrowFunction(code: string, indent: number): string {
+  const hasAwait = /\bawait\b/.test(code);
+  const prefix = hasAwait ? "async " : "";
+
+  if (!code.includes("\n")) {
+    return `${prefix}() => { ${code} }`;
+  }
+
+  const trimmed = code.replace(/\n$/, "");
+  const lines = trimmed.split("\n");
+  const bodyPad = " ".repeat(indent + 2);
+  const closePad = " ".repeat(indent);
+  const indentedLines = lines.map((l) => (l.length > 0 ? `${bodyPad}${l}` : ""));
+
+  return `${prefix}() => {\n${indentedLines.join("\n")}\n${closePad}}`;
 }
 
 // ── n8n mixed template helpers ────────────────────────────────────────────────

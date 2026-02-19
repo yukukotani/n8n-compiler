@@ -558,14 +558,14 @@ test("compile は wait を n8n wait ノードとしてコンパイルする", ()
   });
 });
 
-test("compile は code を n8n code ノードとしてコンパイルし params を透過する", () => {
+test("compile は code を n8n code ノードとしてコンパイルし arrow function body を jsCode 文字列にする", () => {
   const sourceText = `
     export default workflow({
       name: "code-compile",
       settings: {},
       triggers: [n.manualTrigger()],
       execute() {
-        n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+        n.code({ jsCode: () => { return items; }, mode: "runOnceForAllItems" });
       },
     });
   `;

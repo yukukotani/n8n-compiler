@@ -914,7 +914,9 @@ function toNodeCall(
     return null;
   }
 
-  const parameters = parseNodeCallParameters(call.arguments, context.nodeVariables, context.loopVariables, context.bindings);
+  const parameters = call.name === "code"
+    ? parseCodeNodeParameters(call.arguments, context)
+    : parseNodeCallParameters(call.arguments, context.nodeVariables, context.loopVariables, context.bindings);
   const options = parseNodeCallOptions(call.arguments, context.bindings);
 
   return {
@@ -969,6 +971,119 @@ function parseNodeCallParameters(
   }
 
   return {};
+}
+
+/**
+ * Parse parameters for `n.code(...)` nodes.
+ *
+ * The `jsCode` property accepts an arrow/function expression whose block body
+ * is extracted as a source-text string. All other properties (mode, language,
+ * pythonCode, …) are parsed normally via `parseExpressionAsJson`.
+ */
+function parseCodeNodeParameters(
+  args: Argument[],
+  context: BuildContext,
+): JsonObject {
+  const firstArg = args[0];
+  if (!firstArg || firstArg.type === "SpreadElement" || firstArg.type !== "ObjectExpression") {
+    return {};
+  }
+
+  const result: JsonObject = {};
+
+  for (const property of firstArg.properties) {
+    if (property.type !== "Property" || property.kind !== "init" || property.method) {
+      continue;
+    }
+
+    const key = getPropertyKeyName(property.key);
+    if (!key) continue;
+
+    if (key === "jsCode") {
+      const jsCode = extractJsCodeFromExpression(property.value, context);
+      if (jsCode !== null) {
+        result.jsCode = jsCode;
+      }
+      continue;
+    }
+
+    const value = parseExpressionAsJson(
+      property.value,
+      context.nodeVariables,
+      context.loopVariables,
+      context.bindings,
+    );
+    if (value !== null) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+function getPropertyKeyName(key: unknown): string | null {
+  if (!key || typeof key !== "object" || !("type" in key)) return null;
+  const k = key as { type: string; name?: string; value?: unknown };
+  if (k.type === "Identifier" && typeof k.name === "string") return k.name;
+  if (k.type === "Literal" && typeof k.value === "string") return k.value;
+  return null;
+}
+
+function extractJsCodeFromExpression(expression: Expression, context: BuildContext): string | null {
+  if (
+    expression.type !== "ArrowFunctionExpression" &&
+    expression.type !== "FunctionExpression"
+  ) {
+    return null;
+  }
+
+  const fn = expression as unknown as { body: { type: string; start: number; end: number } };
+  if (fn.body.type !== "BlockStatement") {
+    return null;
+  }
+
+  return extractBlockBodyText(context.sourceText, fn.body);
+}
+
+/**
+ * Extract the source text of a block body (`{ ... }`), stripping the braces
+ * and removing the common leading indentation.
+ *
+ * Single-line bodies return a trimmed string without trailing newline.
+ * Multi-line bodies return dedented text with a trailing newline.
+ */
+function extractBlockBodyText(sourceText: string, body: { start: number; end: number }): string {
+  const raw = sourceText.slice(body.start + 1, body.end - 1);
+
+  if (!raw.includes("\n")) {
+    return raw.trim();
+  }
+
+  const lines = raw.split("\n");
+
+  // Remove first line if empty (newline right after {)
+  if (lines.length > 0 && lines[0]!.trim() === "") {
+    lines.shift();
+  }
+  // Remove last line if whitespace-only (indentation before })
+  if (lines.length > 0 && lines[lines.length - 1]!.trim() === "") {
+    lines.pop();
+  }
+
+  if (lines.length === 0) return "";
+
+  // Find minimum indentation among non-empty lines
+  let minIndent = Infinity;
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
+    const match = line.match(/^(\s*)/);
+    if (match) {
+      minIndent = Math.min(minIndent, match[1]!.length);
+    }
+  }
+  if (!isFinite(minIndent)) minIndent = 0;
+
+  return lines.map((l) => l.slice(minIndent)).join("\n") + "\n";
 }
 
 function pickExpressionArgument(argument: Argument | undefined): Expression | null {

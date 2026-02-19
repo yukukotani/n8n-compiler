@@ -1775,7 +1775,7 @@ describe("生成改善", () => {
      expect(sheetsNode?.typeVersion).toBe(1);
   });
 
-  test("複数行の jsCode はテンプレートリテラルで出力される", () => {
+  test("複数行の jsCode は arrow function で出力される", () => {
     const jsCode = `// Node: test
 const result = $input.first().json;
 return {
@@ -1784,7 +1784,7 @@ return {
 };
 `;
     const workflow: N8nWorkflowInput = {
-      name: "template-literal-jsCode",
+      name: "arrow-function-jsCode",
       nodes: [
         { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
         { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
@@ -1797,14 +1797,15 @@ return {
 
     const result = generateWorkflowCode(workflow);
     expect(result.errors).toEqual([]);
-    // Should use template literal (backtick), not JSON string with \n
-    expect(result.code).toContain("jsCode: `");
+    // Should use arrow function, not template literal or JSON string
+    expect(result.code).toContain("jsCode: () => {");
+    expect(result.code).not.toContain("jsCode: `");
     expect(result.code).not.toContain('jsCode: "');
-    // Should contain actual newlines, not escaped \n
-    expect(result.code).toContain("// Node: test\nconst result");
+    // Should contain actual newlines inside the function body
+    expect(result.code).toContain("// Node: test\n");
   });
 
-  test("jsCode に ${} を含む複数行文字列が正しくエスケープされる", () => {
+  test("jsCode に ${} を含む複数行文字列が arrow function 内でそのまま出力される", () => {
     const jsCode = `const formatDate = (date) => {
   const year = date.getFullYear();
   return \`\${year}-\${String(date.getMonth() + 1).padStart(2, '0')}\`;
@@ -1812,7 +1813,7 @@ return {
 return formatDate(new Date());
 `;
     const workflow: N8nWorkflowInput = {
-      name: "template-literal-escape",
+      name: "arrow-function-no-escape",
       nodes: [
         { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
         { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
@@ -1825,14 +1826,16 @@ return formatDate(new Date());
 
     const result = generateWorkflowCode(workflow);
     expect(result.errors).toEqual([]);
-    // Should use template literal
-    expect(result.code).toContain("jsCode: `");
-    // ${ should be escaped as \${ inside the template literal
-    expect(result.code).toContain("\\${year}");
-    expect(result.code).toContain("\\${String(date.getMonth()");
+    // Should use arrow function
+    expect(result.code).toContain("jsCode: () => {");
+    // ${} inside function body needs no escaping (it's regular TS code)
+    expect(result.code).toContain("${year}");
+    expect(result.code).toContain("${String(date.getMonth()");
+    // Should NOT have backslash-escaped ${}
+    expect(result.code).not.toContain("\\${year}");
   });
 
-  test("jsCode テンプレートリテラルのラウンドトリップ (generate → compile)", () => {
+  test("jsCode arrow function のラウンドトリップ (generate → compile)", () => {
     const jsCode = `// Node: 当該Qの計算
 const formatDate = (date) => {
   const year = date.getFullYear();
@@ -1841,7 +1844,7 @@ const formatDate = (date) => {
 return formatDate(new Date());
 `;
     const workflow: N8nWorkflowInput = {
-      name: "template-literal-roundtrip",
+      name: "arrow-function-roundtrip",
       nodes: [
         { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
         { name: "code_2", type: "n8n-nodes-base.code", typeVersion: 2, parameters: { jsCode }, position: [200, 0] },
@@ -1910,7 +1913,7 @@ return formatDate(new Date());
     expect((agentNode?.parameters.options as any)?.systemMessage).toBe(systemMessage);
   });
 
-  test("バッククォートを含む複数行文字列のラウンドトリップ", () => {
+  test("バッククォートを含む複数行文字列のラウンドトリップ (arrow function)", () => {
     const jsCode = "const msg = `Hello ${name}`;\nreturn [{ json: { msg } }];\n";
 
     const workflow: N8nWorkflowInput = {
@@ -1927,6 +1930,8 @@ return formatDate(new Date());
 
     const genResult = generateWorkflowCode(workflow);
     expect(genResult.errors).toEqual([]);
+    // Arrow function body contains backticks as regular TS code
+    expect(genResult.code).toContain("jsCode: () => {");
 
     const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
     expect(compileResult.diagnostics).toEqual([]);

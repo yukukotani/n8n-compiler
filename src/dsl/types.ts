@@ -126,7 +126,8 @@ type CodeMode = "runOnceForAllItems" | "runOnceForEachItem";
 type JavascriptCodeParams = {
   mode?: CodeMode;
   language?: "javaScript";
-  jsCode: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  jsCode: (...args: any[]) => any;
 };
 
 type PythonCodeParams = {

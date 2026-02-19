@@ -22,7 +22,9 @@ function lowerFromSource(sourceText: string): WorkflowIR {
     throw new Error("entry is unexpectedly null");
   }
 
-  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute);
+  const cfgResult = buildControlFlowGraph("workflow.ts", entryResult.entry.execute, undefined, {
+    sourceText,
+  });
   expect(cfgResult.diagnostics).toEqual([]);
   expect(cfgResult.cfg).not.toBeNull();
 
@@ -358,13 +360,13 @@ test("lowerControlFlowGraphToIR は wait を n8n wait ノードに lowering す�
   ]);
 });
 
-test("lowerControlFlowGraphToIR は code を n8n code ノードに lowering し params を維持する", () => {
+test("lowerControlFlowGraphToIR は code を n8n code ノードに lowering し arrow function body を文字列化する", () => {
   const workflow = lowerFromSource(`
     export default workflow({
       name: "sample",
       triggers: [n.manualTrigger()],
       execute() {
-        n.code({ jsCode: "return items;", mode: "runOnceForAllItems" });
+        n.code({ jsCode: () => { return items; }, mode: "runOnceForAllItems" });
       },
     });
   `);
