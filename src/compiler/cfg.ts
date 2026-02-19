@@ -101,9 +101,17 @@ export type CfgSwitchCase = {
   consequent: CfgStatement[];
 };
 
+export type CfgParallelBranch = {
+  body: CfgStatement[];
+  /** Variable name from destructuring (e.g., `a` in `const [a, b] = n.parallel(...)`) */
+  variableName?: string;
+  /** Display name for the branch's return node (from @name JSDoc or options.name) */
+  displayName?: string;
+};
+
 export type CfgParallelStatement = {
   type: "Parallel";
-  branches: CfgStatement[][];
+  branches: CfgParallelBranch[];
 };
 
 /**
@@ -348,7 +356,41 @@ function buildVariableDeclaration(
   const displayName = extractJSDocName(declaration.start, context);
 
   for (const declarator of declaration.declarations) {
-    if (declarator.id.type !== "Identifier" || !declarator.init) {
+    if (!declarator.init) {
+      pushDiagnostic(context, {
+        code: "E_UNSUPPORTED_STATEMENT",
+        message: "Variable declaration must bind n.<node>(...) call",
+        start: declarator.start,
+        end: declarator.end,
+      });
+      continue;
+    }
+
+    // Handle const [a, b] = n.parallel(...)
+    if (declarator.id.type === "ArrayPattern") {
+      const parallelCall = readDslCall(declarator.init);
+      if (!parallelCall || parallelCall.name !== "parallel") {
+        pushDiagnostic(context, {
+          code: "E_UNSUPPORTED_STATEMENT",
+          message: "Array destructuring is only supported with n.parallel()",
+          start: declarator.start,
+          end: declarator.end,
+        });
+        continue;
+      }
+
+      const varNames = declarator.id.elements.map((elem) =>
+        elem && elem.type === "Identifier" ? elem.name : undefined,
+      );
+
+      const branches = parseParallelBranches(parallelCall, context, varNames);
+      if (branches) {
+        statements.push({ type: "Parallel", branches });
+      }
+      continue;
+    }
+
+    if (declarator.id.type !== "Identifier") {
       pushDiagnostic(context, {
         code: "E_UNSUPPORTED_STATEMENT",
         message: "Variable declaration must bind n.<node>(...) call",
@@ -1052,6 +1094,31 @@ function tryBuildParallel(expression: Expression, context: BuildContext): CfgSta
     return null;
   }
 
+  const branches = parseParallelBranches(call, context);
+  if (!branches) {
+    return [];
+  }
+
+  return [
+    {
+      type: "Parallel",
+      branches,
+    },
+  ];
+}
+
+/**
+ * Parse `n.parallel(...)` branches, supporting:
+ * - Expression body: `() => n.foo(...)`
+ * - Block body: `() => { n.foo(...); ... }`
+ *
+ * Returns branches, or null on error.
+ */
+function parseParallelBranches(
+  call: DslCall,
+  context: BuildContext,
+  variableNames?: (string | undefined)[],
+): CfgParallelBranch[] | null {
   if (call.arguments.length === 0) {
     pushDiagnostic(context, {
       code: "E_UNSUPPORTED_STATEMENT",
@@ -1059,12 +1126,15 @@ function tryBuildParallel(expression: Expression, context: BuildContext): CfgSta
       start: call.start,
       end: call.end,
     });
-    return [];
+    return null;
   }
 
-  const branches: CfgStatement[][] = [];
+  const branches: CfgParallelBranch[] = [];
 
-  for (const arg of call.arguments) {
+  for (let i = 0; i < call.arguments.length; i++) {
+    const arg = call.arguments[i]!;
+    const varName = variableNames?.[i];
+
     if (arg.type === "SpreadElement") {
       pushDiagnostic(context, {
         code: "E_UNSUPPORTED_STATEMENT",
@@ -1072,7 +1142,7 @@ function tryBuildParallel(expression: Expression, context: BuildContext): CfgSta
         start: arg.start,
         end: arg.end,
       });
-      return [];
+      return null;
     }
 
     if (arg.type !== "ArrowFunctionExpression" && arg.type !== "FunctionExpression") {
@@ -1082,19 +1152,81 @@ function tryBuildParallel(expression: Expression, context: BuildContext): CfgSta
         start: arg.start,
         end: arg.end,
       });
-      return [];
+      return null;
     }
 
-    const body = pickParallelBranchBody(arg, context);
-    branches.push(buildStatements(body, context));
+    const branch = buildParallelBranch(arg, varName, context);
+    branches.push(branch);
   }
 
-  return [
-    {
-      type: "Parallel",
-      branches,
-    },
-  ];
+  return branches;
+}
+
+/**
+ * Build a single parallel branch from a callback argument.
+ *
+ * For expression body (`() => n.foo(...)`) the single call becomes a
+ * `CfgVariableStatement` (if `varName` is provided) or `CfgNodeCallStatement`.
+ *
+ * For block body, existing parsing is used and the last node call is promoted
+ * to a `CfgVariableStatement` when a variable name is assigned.
+ */
+function buildParallelBranch(
+  fn: ArrowFunctionExpression | Expression,
+  varName: string | undefined,
+  context: BuildContext,
+): CfgParallelBranch {
+  let body: CfgStatement[];
+  let displayName: string | undefined;
+
+  if (fn.type === "ArrowFunctionExpression" && fn.expression) {
+    // Expression body: () => n.foo(...)
+    const nodeCall = toNodeCall(fn.body as Expression, context, {
+      start: fn.body.start,
+      end: fn.body.end,
+    });
+
+    if (nodeCall) {
+      displayName = nodeCall.options?.name;
+      if (varName) {
+        context.nodeVariables.set(varName, displayName ?? varName);
+        body = [{
+          type: "Variable",
+          name: varName,
+          call: nodeCall,
+          ...(displayName && { displayName }),
+        }];
+      } else {
+        body = [{ type: "NodeCall", call: nodeCall, ...(displayName && { displayName }) }];
+      }
+    } else {
+      body = [];
+    }
+  } else {
+    // Block body (existing path)
+    const statements = pickParallelBranchBody(fn, context);
+    body = buildStatements(statements, context);
+
+    // If a variable name is assigned from destructuring, promote the last node call
+    if (varName && body.length > 0) {
+      const last = body[body.length - 1]!;
+      if (last.type === "NodeCall") {
+        displayName = last.call.options?.name ?? last.displayName;
+        context.nodeVariables.set(varName, displayName ?? varName);
+        body[body.length - 1] = {
+          type: "Variable",
+          name: varName,
+          call: last.call,
+          ...(displayName && { displayName }),
+        };
+      } else if (last.type === "Variable") {
+        displayName = last.displayName ?? last.call.options?.name ?? last.name;
+        context.nodeVariables.set(varName, displayName ?? varName);
+      }
+    }
+  }
+
+  return { body, variableName: varName, displayName };
 }
 
 function pickParallelBranchBody(

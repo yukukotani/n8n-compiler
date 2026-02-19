@@ -1150,6 +1150,47 @@ function generateSwitchStatement(
   }
 }
 
+/**
+ * Build the node call expression string (without `const varName = ` prefix or trailing `;`).
+ * Returns the raw `n.kind(params, options)` string.
+ */
+function buildNodeCallExpression(
+  node: GraphNode,
+  indent: number,
+): string {
+  if (!node.dslKind) {
+    return `/* unsupported: ${node.type} */`;
+  }
+
+  const params = stripEmptyOptions(normalizeParameters(node.type, node.typeVersion, node.parameters));
+  const paramsStr = serializeObject(params, indent);
+
+  // For parallel branches, always include name in options (for display name tracking)
+  const options = buildNodeOptions(node);
+
+  if (options) {
+    return `n.${node.dslKind}(${paramsStr}, ${serializeObject(options, indent)})`;
+  }
+
+  if (Object.keys(params).length === 0 && isOptionalParamsNode(node.dslKind)) {
+    return `n.${node.dslKind}()`;
+  }
+
+  return `n.${node.dslKind}(${paramsStr})`;
+}
+
+/**
+ * Check if a branch starting at `target` consists of a single node (no successors within the branch).
+ */
+function isSingleNodeBranch(
+  target: string,
+  adj: AdjacencyMap,
+  convergence: Set<string>,
+): boolean {
+  const successors = adj.get(target)?.get(0) ?? [];
+  return successors.every((s) => convergence.has(s));
+}
+
 function generateParallelFromFanout(
   targets: string[],
   nodeMap: Map<string, GraphNode>,
@@ -1166,20 +1207,43 @@ function generateParallelFromFanout(
   const branchReachable = targets.map((t) => collectReachable([t], adj, nodeMap));
   const convergence = findMultiConvergenceNodes(branchReachable);
 
-  lines.push(`${pad}n.parallel(`);
+  // Collect variable names and check if any branch is referenced
+  const branchVarNames: (string | undefined)[] = targets.map((target) => {
+    return _nodeRefMap.get(target);
+  });
+  const hasDestructuring = branchVarNames.some((v) => v !== undefined);
+
+  // Build the destructuring prefix
+  const destructureNames = branchVarNames.map((v, i) => {
+    if (v) return v;
+    // Use unique placeholder names for unreferenced branches
+    return i === 0 ? "_" : `_${i}`;
+  });
+  lines.push(`${pad}const [${destructureNames.join(", ")}] = n.parallel(`);
 
   // Generate each branch independently from the same base visited set.
-  // We must NOT merge branch visited sets into the parent until all branches
-  // are generated; otherwise later branches see earlier branches' nodes as
-  // already visited and convergence nodes get absorbed into the last branch.
   const baseVisited = new Set(visited);
   const allBranchVisited: Set<string>[] = [];
 
   for (const target of targets) {
     const branchVisited = new Set(baseVisited);
-    const branchLines: string[] = [];
+    const node = nodeMap.get(target);
 
-    if (!convergence.has(target)) {
+    if (!node || convergence.has(target)) {
+      lines.push(`${pad}  () => n.noOp(),`);
+      allBranchVisited.push(branchVisited);
+      continue;
+    }
+
+    branchVisited.add(target);
+
+    if (isSingleNodeBranch(target, adj, convergence)) {
+      // Single-node branch → expression body
+      const callExpr = buildNodeCallExpression(node, indent + 2);
+      lines.push(`${pad}  () => ${callExpr},`);
+    } else {
+      // Multi-node branch → block body
+      const branchLines: string[] = [];
       generateStatements(
         [target],
         nodeMap,
@@ -1190,11 +1254,10 @@ function generateParallelFromFanout(
         indent + 4,
         errors,
       );
+      lines.push(`${pad}  () => {`);
+      lines.push(...branchLines);
+      lines.push(`${pad}  },`);
     }
-
-    lines.push(`${pad}  () => {`);
-    lines.push(...branchLines);
-    lines.push(`${pad}  },`);
 
     allBranchVisited.push(branchVisited);
   }
@@ -1539,6 +1602,18 @@ function collectUnwrappableExprStrings(value: unknown, strings: string[]): void 
       }
       return;
     }
+    // Check =...{{ }}... mixed template format
+    if (value.startsWith("=") && !value.startsWith("={{") && /\{\{[\s\S]*?\}\}/.test(value)) {
+      const re = /\{\{([\s\S]*?)\}\}/g;
+      let m;
+      while ((m = re.exec(value)) !== null) {
+        const body = m[1]!.trim();
+        if (body && !N8N_EXPRESSION_ONLY_GLOBALS.test(body)) {
+          strings.push(body);
+        }
+      }
+      return;
+    }
     return;
   }
   if (Array.isArray(value)) {
@@ -1843,6 +1918,10 @@ function serializeValue(value: unknown, indent: number): string {
     if (mustacheUnwrapped !== null) {
       return mustacheUnwrapped;
     }
+    // Convert n8n mixed template (=text {{ expr }} text) to TS template literal
+    if (isMixedTemplate(value) && canConvertMixedTemplate(value)) {
+      return serializeMixedTemplate(value);
+    }
     // Use template literal for multiline strings (more readable than JSON.stringify with \n)
     if (shouldUseTemplateLiteral(value)) {
       return serializeAsTemplateLiteral(value);
@@ -1935,6 +2014,91 @@ function escapeForTemplateLiteral(value: string): string {
  */
 function serializeAsTemplateLiteral(value: string): string {
   return "`" + escapeForTemplateLiteral(value) + "`";
+}
+
+// ── n8n mixed template helpers ────────────────────────────────────────────────
+
+/**
+ * Detect an n8n "mixed template" string: starts with `=`, is NOT a full-string
+ * expression (`={{...}}`), and contains `{{ expr }}` interpolation(s).
+ *
+ * Examples:
+ * - `"=text {{ $('Node').item.json.name }} more"` → true
+ * - `"={{$json.ok}}"` → false (full expression, handled elsewhere)
+ * - `"=plain text"` → false (no interpolation)
+ */
+function isMixedTemplate(value: string): boolean {
+  if (!value.startsWith("=")) return false;
+  if (value.startsWith("={{")) return false;
+  return /\{\{[\s\S]*?\}\}/.test(value);
+}
+
+/**
+ * Check whether a mixed template can be converted to a TS template literal.
+ * Returns false if any embedded expression contains n8n-only globals that
+ * cannot be represented in raw TS code.
+ */
+function canConvertMixedTemplate(value: string): boolean {
+  const body = value.slice(1);
+  const re = /\{\{([\s\S]*?)\}\}/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    const exprBody = m[1]!.trim();
+    if (exprBody && N8N_EXPRESSION_ONLY_GLOBALS.test(exprBody)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Convert an n8n mixed template string (`=text {{ expr }} text`) into a TS
+ * template literal with `${expr}` interpolations.
+ *
+ * - Strips the leading `=`.
+ * - Replaces each `{{ expr }}` with `${convertedExpr}`, applying trigger/node
+ *   reference replacement and tracking n8n globals.
+ * - Escapes literal text segments for safe embedding in backtick strings.
+ */
+function serializeMixedTemplate(value: string): string {
+  const body = value.slice(1); // strip leading '='
+
+  const re = /\{\{([\s\S]*?)\}\}/g;
+  let result = "`";
+  let lastIndex = 0;
+  let m;
+
+  while ((m = re.exec(body)) !== null) {
+    // Add literal text before this expression
+    if (m.index > lastIndex) {
+      result += escapeForTemplateLiteral(body.slice(lastIndex, m.index));
+    }
+
+    // Process the expression
+    let expr = m[1]!.trim();
+
+    // Apply trigger reference replacement ($('TriggerName').item.json → param)
+    const { replaced: afterTrigger } = replaceTriggerReferences(expr);
+    expr = afterTrigger;
+
+    // Apply node reference replacement ($('NodeName').item.json → varName)
+    const { replaced: afterNode } = replaceNodeReferences(expr);
+    expr = afterNode;
+
+    // Track n8n globals (DateTime, $, etc.) for import generation
+    trackN8nGlobals(expr);
+
+    result += "${" + expr + "}";
+    lastIndex = m.index + m[0].length;
+  }
+
+  // Add remaining literal text
+  if (lastIndex < body.length) {
+    result += escapeForTemplateLiteral(body.slice(lastIndex));
+  }
+
+  result += "`";
+  return result;
 }
 
 function isSimpleObject(obj: JsonObject): boolean {

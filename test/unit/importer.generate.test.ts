@@ -116,8 +116,9 @@ describe("generateWorkflowCode", () => {
     const result = generateWorkflowCode(workflow);
     expect(result.errors).toEqual([]);
     expect(result.code).toContain("n.parallel(");
-    expect(result.code).toContain('n.set({ value: "a" })');
-    expect(result.code).toContain('n.set({ value: "b" })');
+    // Each branch is an expression-body arrow returning the node call
+    expect(result.code).toContain('() => n.set({ value: "a" })');
+    expect(result.code).toContain('() => n.set({ value: "b" })');
   });
 
   test("fan-out → 合流ノード → 後続ノードを正しく復元する", () => {
@@ -157,14 +158,23 @@ describe("generateWorkflowCode", () => {
     expect(compileResult.workflow).not.toBeNull();
 
     const connections = compileResult.workflow!.connections;
-    // Both set nodes should connect to merge
-    const set2Conn = connections["set_2"]?.main?.[0];
-    const set3Conn = connections["set_3"]?.main?.[0];
-    expect(set2Conn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "merge_4" })]));
-    expect(set3Conn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "merge_4" })]));
-    // merge should connect to noOp
-    const mergeConn = connections["merge_4"]?.main?.[0];
-    expect(mergeConn).toEqual(expect.arrayContaining([expect.objectContaining({ node: "noOp_5" })]));
+    // Both set nodes should connect to merge (node names may be auto-generated)
+    const nodeNames = compileResult.workflow!.nodes.map((n) => n.name);
+    const set2Name = nodeNames.find((n) => n.startsWith("set_") && n !== "set_3");
+    const set3Name = nodeNames.find((n) => n === "set_3" || (n.startsWith("set_") && n !== set2Name));
+    const mergeName = nodeNames.find((n) => n.startsWith("merge"));
+    const noOpName = nodeNames.find((n) => n.startsWith("noOp"));
+
+    expect(set2Name).toBeDefined();
+    expect(mergeName).toBeDefined();
+    expect(noOpName).toBeDefined();
+
+    // set nodes connect to merge
+    const set2Conn = connections[set2Name!]?.main?.[0];
+    expect(set2Conn).toEqual(expect.arrayContaining([expect.objectContaining({ node: mergeName })]));
+    // merge connects to noOp
+    const mergeConn = connections[mergeName!]?.main?.[0];
+    expect(mergeConn).toEqual(expect.arrayContaining([expect.objectContaining({ node: noOpName })]));
   });
 
   test("credentials 付きノードの options を保持する", () => {
@@ -1647,17 +1657,16 @@ describe("生成改善", () => {
     expect(result.errors).toEqual([]);
     expect(result.code).not.toBeNull();
 
-    // Both code nodes should be const with different names
-    expect(result.code).toContain("const code = n.code(");
-    expect(result.code).toContain("const code2 = n.code(");
+    // Both code nodes should be in destructuring with different names
+    expect(result.code).toContain("const [code, code2] = n.parallel(");
     // References should use the variable names
     expect(result.code).toContain("code.a");
     expect(result.code).toContain("code2.b");
   });
 
-  test("テンプレート文字列内の $('Node') 参照は const 化しない", () => {
+  test("mixed template 内の $('Node') 参照は const 化される", () => {
     const workflow: N8nWorkflowInput = {
-      name: "no-const-for-template-refs",
+      name: "const-for-mixed-template-refs",
       nodes: [
         { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
         { name: "httpRequest_2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
@@ -1666,7 +1675,7 @@ describe("生成改善", () => {
           type: "@n8n/n8n-nodes-langchain.agent",
           typeVersion: 3,
           parameters: {
-            // Long template text containing $('httpRequest_2') — NOT an ={{...}} expression
+            // Mixed template text containing $('httpRequest_2') — converted to ${} interpolation
             text: "=<!-- Summary -->\nResult: {{ $('httpRequest_2').item.json.data }}\nEnd.",
             promptType: "define",
           },
@@ -1684,11 +1693,15 @@ describe("生成改善", () => {
     expect(result.errors).toEqual([]);
     expect(result.code).not.toBeNull();
 
-    // httpRequest_2 is only referenced inside a template string (not an unwrappable expression),
-    // so it should NOT become a const variable
-    expect(result.code).not.toContain("const httpRequest");
-    // The template string should be preserved as-is
-    expect(result.code).toContain("$('httpRequest_2')");
+    // httpRequest_2 is referenced inside a mixed template expression,
+    // so it SHOULD become a const variable
+    expect(result.code).toContain("const httpRequest = n.httpRequest(");
+    // The reference should be replaced with the variable name
+    expect(result.code).toContain("${httpRequest.data}");
+    // Should NOT contain the original $('httpRequest_2') reference
+    expect(result.code).not.toContain("$('httpRequest_2')");
+    // Leading '=' should be stripped
+    expect(result.code).not.toContain("text: `=");
   });
 
   test("$json を含む ={{...}} 式内の $('Node') 参照は const 化しない", () => {
@@ -1859,32 +1872,41 @@ return formatDate(new Date());
       name: "langchain-template-roundtrip",
       nodes: [
         { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "Node1", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com" }, position: [200, 0] },
         {
           name: "langchainAgent_2",
           type: "@n8n/n8n-nodes-langchain.agent",
           typeVersion: 3,
           parameters: { promptType: "define", text, options: { systemMessage } },
-          position: [200, 0],
+          position: [400, 0],
         },
       ],
       connections: {
-        manualTrigger_1: { main: [[{ node: "langchainAgent_2", type: "main", index: 0 }]] },
+        manualTrigger_1: { main: [[{ node: "Node1", type: "main", index: 0 }]] },
+        Node1: { main: [[{ node: "langchainAgent_2", type: "main", index: 0 }]] },
       },
       settings: {},
     };
 
     const genResult = generateWorkflowCode(workflow);
     expect(genResult.errors).toEqual([]);
-    // text and systemMessage should use template literal
+    // text should use template literal with ${} interpolation (mixed template converted)
     expect(genResult.code).toContain("text: `");
+    // systemMessage has no expressions, should use plain template literal
     expect(genResult.code).toContain("systemMessage: `");
+    // text should have ${} interpolation instead of {{ }}
+    expect(genResult.code).toContain("${httpRequest.name}");
+    expect(genResult.code).not.toContain("{{ $('Node1')");
 
     const compileResult = compile({ file: "roundtrip.ts", sourceText: genResult.code! });
     expect(compileResult.diagnostics).toEqual([]);
     expect(compileResult.workflow).not.toBeNull();
 
-    const agentNode = compileResult.workflow!.nodes[1];
-    expect(agentNode?.parameters.text).toBe(text);
+    const agentNode = compileResult.workflow!.nodes[2];
+    // Compiled text uses ={{`...`}} format (semantically equivalent to =...{{ }}...)
+    expect(agentNode?.parameters.text).toContain("$node[");
+    expect(agentNode?.parameters.text).toContain(".json.name");
+    // systemMessage stays as-is (no expressions)
     expect((agentNode?.parameters.options as any)?.systemMessage).toBe(systemMessage);
   });
 
@@ -1912,6 +1934,97 @@ return formatDate(new Date());
 
     const codeNode = compileResult.workflow!.nodes[1];
     expect(codeNode?.parameters.jsCode).toBe(jsCode);
+  });
+
+  test("mixed template のラウンドトリップ (複雑な式 + arrow function)", () => {
+    const text = "=<name>\n{{ $('Node1').item.json.name }}\n</name>\n<items>\n{{ $('Node2').all().filter(i => i.json.ok).map(i => `[${i.json.date}] ${i.json.text}`).join('\\n') }}\n</items>\n";
+    const workflow: N8nWorkflowInput = {
+      name: "mixed-template-complex-roundtrip",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        { name: "Node1", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com/1" }, position: [200, 0] },
+        { name: "Node2", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, parameters: { method: "GET", url: "https://example.com/2" }, position: [200, 200] },
+        {
+          name: "langchainAgent_4",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: { promptType: "define", text },
+          position: [400, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: {
+          main: [[
+            { node: "Node1", type: "main", index: 0 },
+            { node: "Node2", type: "main", index: 0 },
+          ]],
+        },
+        Node1: { main: [[{ node: "langchainAgent_4", type: "main", index: 0 }]] },
+        Node2: { main: [[{ node: "langchainAgent_4", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    // import (n8n JSON → DSL code)
+    const genResult = generateWorkflowCode(workflow);
+    expect(genResult.errors).toEqual([]);
+    expect(genResult.code).not.toBeNull();
+
+    // Parallel branches: Node1 and Node2 are in separate branches
+    expect(genResult.code).toContain("const [httpRequest, httpRequest2] = n.parallel(");
+    expect(genResult.code).toContain("${httpRequest.name}");
+
+    // Node2 referenced via .all() → $() call is preserved
+    // $ should be imported for the $() call
+    expect(genResult.code).toContain("import { n, workflow, $ }");
+    expect(genResult.code).toContain("$('Node2').all()");
+
+    // No leading '=' in the template
+    expect(genResult.code).not.toContain("text: `=");
+
+    // compile (DSL code → n8n JSON)
+    const compileResult = compile({ file: "mixed-template-roundtrip.ts", sourceText: genResult.code! });
+    expect(compileResult.diagnostics).toEqual([]);
+    expect(compileResult.workflow).not.toBeNull();
+
+    const agentNode = compileResult.workflow!.nodes.find(n => n.type === "@n8n/n8n-nodes-langchain.agent");
+    const compiledText = agentNode?.parameters.text as string;
+    // Should use ={{`...`}} format
+    expect(compiledText).toMatch(/^=\{\{`/);
+    // Should contain the node reference
+    expect(compiledText).toContain('$node["Node1"].json.name');
+    // Should contain the .all().filter() chain with arrow functions
+    expect(compiledText).toContain('$("Node2").all().filter(');
+    expect(compiledText).toContain("=> ");
+  });
+
+  test("$json を含む mixed template は変換されない", () => {
+    const text = "=text: {{ $json.field }}\nend";
+    const workflow: N8nWorkflowInput = {
+      name: "mixed-template-n8n-globals",
+      nodes: [
+        { name: "manualTrigger_1", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, parameters: {}, position: [0, 0] },
+        {
+          name: "langchainAgent_2",
+          type: "@n8n/n8n-nodes-langchain.agent",
+          typeVersion: 3,
+          parameters: { promptType: "define", text },
+          position: [200, 0],
+        },
+      ],
+      connections: {
+        manualTrigger_1: { main: [[{ node: "langchainAgent_2", type: "main", index: 0 }]] },
+      },
+      settings: {},
+    };
+
+    const result = generateWorkflowCode(workflow);
+    expect(result.errors).toEqual([]);
+    expect(result.code).not.toBeNull();
+
+    // Should stay as plain template literal (not converted because of $json)
+    expect(result.code).toContain("{{ $json.field }}");
+    expect(result.code).toContain("text: `=");
   });
 
   test("単一行文字列はテンプレートリテラルにしない", () => {

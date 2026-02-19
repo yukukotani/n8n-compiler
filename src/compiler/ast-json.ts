@@ -238,7 +238,11 @@ function resolveTemplateLiteral(
         return null;
       }
 
-      const body = resolveReferenceBody(expr, nodeVariables, loopVariables);
+      // Try simple reference resolution first, then fall back to full expression serialization
+      let body = resolveReferenceBody(expr, nodeVariables, loopVariables);
+      if (body === null) {
+        body = serializeExpressionBody(expr, nodeVariables, loopVariables);
+      }
       if (body === null) {
         return null;
       }
@@ -471,6 +475,18 @@ function serializeExpressionBody(
       return result;
     }
 
+    case "ArrowFunctionExpression": {
+      if (!expression.expression) {
+        // Block-body arrows not supported
+        return null;
+      }
+      const params = serializeArrowParams(expression.params, nodeVariables, loopVariables);
+      if (params === null) return null;
+      const body = serializeExpressionBody(expression.body as Expression, nodeVariables, loopVariables);
+      if (body === null) return null;
+      return `${params} => ${body}`;
+    }
+
     case "UnaryExpression": {
       const argument = serializeExpressionBody(expression.argument, nodeVariables, loopVariables);
       if (argument === null) return null;
@@ -513,6 +529,107 @@ function serializeExpressionBody(
     default:
       return null;
   }
+}
+
+/**
+ * Serialize arrow function parameters.
+ *
+ * Single identifiers are emitted bare (`i => ...`), multi-params and
+ * non-identifier patterns use parentheses (`(a, b) => ...`, `([k, v]) => ...`).
+ */
+function serializeArrowParams(
+  params: unknown[],
+  nodeVariables: ReadonlyMap<string, string>,
+  loopVariables?: ReadonlySet<string>,
+): string | null {
+  const serialized: string[] = [];
+  for (const param of params) {
+    const s = serializeBindingPattern(param);
+    if (s === null) return null;
+    serialized.push(s);
+  }
+
+  if (serialized.length === 1) {
+    const first = params[0] as { type?: string } | undefined;
+    if (first?.type === "Identifier") {
+      return serialized[0]!;
+    }
+  }
+
+  return `(${serialized.join(", ")})`;
+}
+
+/**
+ * Serialize a binding pattern (function parameter, destructuring target).
+ *
+ * Handles: Identifier, ArrayPattern, ObjectPattern, AssignmentPattern, RestElement.
+ */
+function serializeBindingPattern(param: unknown): string | null {
+  if (!param || typeof param !== "object" || !("type" in param)) return null;
+  const p = param as Record<string, unknown>;
+
+  if (p.type === "Identifier" && typeof p.name === "string") {
+    return p.name;
+  }
+
+  if (p.type === "ArrayPattern") {
+    const elements = p.elements as unknown[];
+    if (!Array.isArray(elements)) return null;
+    const parts: string[] = [];
+    for (const elem of elements) {
+      if (elem === null) {
+        parts.push("");
+        continue;
+      }
+      const s = serializeBindingPattern(elem);
+      if (s === null) return null;
+      parts.push(s);
+    }
+    return `[${parts.join(", ")}]`;
+  }
+
+  if (p.type === "ObjectPattern") {
+    const properties = p.properties as unknown[];
+    if (!Array.isArray(properties)) return null;
+    const props: string[] = [];
+    for (const prop of properties) {
+      if (!prop || typeof prop !== "object" || !("type" in prop)) return null;
+      const pr = prop as Record<string, unknown>;
+
+      if (pr.type === "RestElement") {
+        const arg = serializeBindingPattern(pr.argument);
+        if (arg === null) return null;
+        props.push(`...${arg}`);
+        continue;
+      }
+
+      // BindingProperty (type: "Property")
+      if (pr.shorthand) {
+        const val = serializeBindingPattern(pr.value);
+        if (val === null) return null;
+        props.push(val);
+      } else {
+        const key = parsePropertyKey(pr.key);
+        const val = serializeBindingPattern(pr.value);
+        if (!key || !val) return null;
+        props.push(`${key}: ${val}`);
+      }
+    }
+    return `{ ${props.join(", ")} }`;
+  }
+
+  if (p.type === "AssignmentPattern") {
+    // Default values — serialize left side only (default values are rare in expressions)
+    return serializeBindingPattern(p.left);
+  }
+
+  if (p.type === "RestElement") {
+    const arg = serializeBindingPattern(p.argument);
+    if (arg === null) return null;
+    return `...${arg}`;
+  }
+
+  return null;
 }
 
 function serializeArgumentList(

@@ -477,15 +477,18 @@ test("googleCalendar を ActionNode として定義できる", () => {
   expect(definition.name).toBe("gcal-action-workflow");
 });
 
-test("n.parallel() で複数ブランチを定義できる", () => {
+test("n.parallel() で複数ブランチを定義でき、戻り値がタプルになる", () => {
   const definition = workflow({
     name: "parallel-workflow",
     triggers: [n.manualTrigger()],
     execute() {
-      n.parallel(
-        () => { n.set({ values: { a: 1 } }); },
-        () => { n.noOp(); },
+      const [a, b] = n.parallel(
+        () => n.set({ values: { a: 1 } }),
+        () => n.noOp(),
       );
+      // a and b should be NodeRef
+      void a;
+      void b;
     },
   }) satisfies WorkflowDefinition;
 

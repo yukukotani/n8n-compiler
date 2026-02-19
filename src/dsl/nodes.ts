@@ -224,8 +224,11 @@ export const n = {
     // no-op at runtime; the compiler handles this statically
   },
 
-  parallel(..._branches: Array<() => void>): void {
+  parallel<T extends Array<() => NodeRef>>(
+    ..._branches: T
+  ): { [K in keyof T]: ReturnType<T[K]> } {
     // no-op at runtime; the compiler handles this statically
+    return [] as never;
   },
 
   expr<Value extends ExpressionValue>(value: Value): ConditionRef<Value> {

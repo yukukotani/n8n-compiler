@@ -924,10 +924,10 @@ test("compile は n.parallel() で fan-out 接続をコンパイルする", () =
       settings: {},
       triggers: [n.manualTrigger()],
       execute() {
-        n.parallel(
-          () => { n.set({ value: "a" }); },
-          () => { n.set({ value: "b" }); },
-          () => { n.noOp(); },
+        const [_a, _b, _c] = n.parallel(
+          () => n.set({ value: "a" }),
+          () => n.set({ value: "b" }),
+          () => n.noOp(),
         );
       },
     });
@@ -947,9 +947,9 @@ test("compile は n.parallel() で fan-out 接続をコンパイルする", () =
 
   expect(result.workflow.nodes.map((node) => node.name)).toEqual([
     "manualTrigger_1",
-    "set_2",
-    "set_3",
-    "noOp_4",
+    "a",
+    "b",
+    "c",
   ]);
 
   // All 3 nodes should be connected from the trigger (order may vary)
@@ -957,9 +957,9 @@ test("compile は n.parallel() で fan-out 接続をコンパイルする", () =
   expect(output0).toHaveLength(3);
   expect(output0).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ node: "set_2" }),
-      expect.objectContaining({ node: "set_3" }),
-      expect.objectContaining({ node: "noOp_4" }),
+      expect.objectContaining({ node: "a" }),
+      expect.objectContaining({ node: "b" }),
+      expect.objectContaining({ node: "c" }),
     ]),
   );
 });

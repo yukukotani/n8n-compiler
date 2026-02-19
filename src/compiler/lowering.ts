@@ -263,7 +263,7 @@ function lowerConnectStatement(statement: CfgConnectStatement, context: Lowering
 function lowerParallelStatement(statement: CfgParallelStatement, context: LoweringContext): void {
   const savedFrontier = context.frontier;
   const branchFrontiers = statement.branches.map((branch, branchIndex) => {
-    const frontier = lowerBranchWithFrontier(branch, savedFrontier, context);
+    const frontier = lowerBranchWithFrontier(branch.body, savedFrontier, context);
     // Tag each branch's frontier ports with the branch index so that
     // the next node receives each parallel branch on a separate input.
     return frontier.map((port) => ({ ...port, inputIndex: branchIndex }));
